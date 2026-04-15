@@ -1,0 +1,20 @@
+{
+  "name": "elementus-fase1",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Elementus Fase 1 — Motor de Relatórios e Dados",
+  "scripts": {
+    "dev": "pnpm --filter @elementus/dashboard dev",
+    "dev:api": "pnpm --filter @elementus/api dev",
+    "dev:all": "pnpm -r --parallel dev",
+    "build": "pnpm -r build",
+    "build:dashboard": "pnpm --filter @elementus/dashboard build",
+    "build:api": "pnpm --filter @elementus/api build",
+    "lint": "pnpm -r lint",
+    "clean": "pnpm -r exec rm -rf dist node_modules"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  }
+}
