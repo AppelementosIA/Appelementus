@@ -47,72 +47,6 @@ function readFileAsDataUrl(file: File) {
   });
 }
 
-function buildTextDataUrl(content: string, mimeType = "text/plain") {
-  return `data:${mimeType};charset=utf-8,${encodeURIComponent(content)}`;
-}
-
-function buildDemoFolderUrl(report: ReportRecord, emittedBy?: string) {
-  const lines = [
-    "Elementus - Pasta simulada do Microsoft 365",
-    "",
-    `Relatorio: ${report.reportNumber}`,
-    `Projeto: ${report.title}`,
-    `Pasta: ${report.microsoft365.folderPath}`,
-    `Emitido por: ${emittedBy || "Equipe Elementus"}`,
-    "",
-    "Este link existe apenas para visualizacao local do fluxo demo.",
-  ];
-
-  return buildTextDataUrl(lines.join("\n"));
-}
-
-function buildDemoDocxUrl(report: ReportRecord, emittedBy?: string) {
-  const lines = [
-    "Elementus - Previa local do .docx",
-    "",
-    `Relatorio: ${report.reportNumber}`,
-    `Titulo: ${report.title}`,
-    `Periodo: ${report.period}`,
-    `Responsavel tecnico: ${report.responsibleTechnical}`,
-    `Emitido por: ${emittedBy || "Equipe Elementus"}`,
-    "",
-    ...report.sections.flatMap((section) => [
-      `${section.number}. ${section.title}`,
-      section.content,
-      "",
-    ]),
-  ];
-
-  return buildTextDataUrl(lines.join("\n"));
-}
-
-function buildLocalDemoIssuedReport(report: ReportRecord, emittedBy?: string) {
-  const now = new Date().toISOString();
-  const docxUrl = buildDemoDocxUrl(report, emittedBy);
-  const folderUrl = buildDemoFolderUrl(report, emittedBy);
-
-  return {
-    ...report,
-    status: "issued" as const,
-    updatedAt: now,
-    sections: report.sections.map((section) => ({
-      ...section,
-      images: section.images.map((image) => ({
-        ...image,
-        microsoft365Url: image.microsoft365Url || image.previewUrl,
-      })),
-    })),
-    microsoft365: {
-      ...report.microsoft365,
-      status: "saved" as const,
-      lastSavedAt: now,
-      folderUrl,
-      docxUrl,
-      savedBy: emittedBy || "demo.local@elementus.local",
-    },
-  };
-}
-
 export function ReportReviewPlatformPage() {
   const params = useParams();
   const { getMicrosoftAccessToken, user } = useAuth();
@@ -185,7 +119,6 @@ export function ReportReviewPlatformPage() {
     [projectsData, report]
   );
   const status = report ? reportStatusMeta[report.status] : null;
-  const isLocalDemo = user?.provider === "local-demo";
 
   const persistReport = (
     nextReport: ReportRecord,
@@ -241,16 +174,6 @@ export function ReportReviewPlatformPage() {
 
     try {
       setIsIssuing(true);
-
-      if (isLocalDemo) {
-        persistReport(
-          buildLocalDemoIssuedReport(report, user?.email),
-          "Relatorio emitido em modo demo local. Os links exibidos abaixo sao simulados para visualizacao.",
-          "success"
-        );
-        setShowIssueConfirm(false);
-        return;
-      }
 
       const accessToken = await getMicrosoftAccessToken();
       const issuedReport = await issuePlatformReport({
@@ -341,7 +264,6 @@ export function ReportReviewPlatformPage() {
               </Button>
             </Link>
             <Badge variant={status.variant}>{status.label}</Badge>
-            {isLocalDemo ? <Badge variant="info">Demo local</Badge> : null}
             <Badge variant={report.microsoft365.status === "saved" ? "success" : "outline"}>
               {report.microsoft365.status === "saved" ? "Microsoft 365 salvo" : "Microsoft 365 pendente"}
             </Badge>
@@ -384,9 +306,7 @@ export function ReportReviewPlatformPage() {
               <div>
                 <h3 className="font-semibold">Confirmar emissao</h3>
                 <p className="text-sm text-muted-foreground">
-                  {isLocalDemo
-                    ? "Ao emitir no demo, a plataforma simula o salvamento final para voce visualizar o fluxo completo."
-                    : "Ao emitir, o relatorio sera marcado como concluido e salvo na pasta oficial do Microsoft 365 deste projeto."}
+                  Ao emitir, o relatorio sera marcado como concluido e salvo na pasta oficial do Microsoft 365 deste projeto.
                 </p>
               </div>
               <div className="flex gap-3">
@@ -443,7 +363,7 @@ export function ReportReviewPlatformPage() {
                     <Button variant="outline" size="sm" className="mt-3" asChild>
                       <a href={report.microsoft365.folderUrl} target="_blank" rel="noreferrer">
                         <FolderOpen className="mr-2 h-4 w-4" />
-                        {isLocalDemo ? "Abrir pasta simulada" : "Abrir pasta no Microsoft 365"}
+                        Abrir pasta no Microsoft 365
                       </a>
                     </Button>
                   ) : null}
@@ -578,9 +498,7 @@ export function ReportReviewPlatformPage() {
             <div>
               <h3 className="font-semibold">Saida final da etapa 1</h3>
               <p className="text-sm text-muted-foreground">
-                {isLocalDemo
-                  ? "O modo demo mostra o fluxo completo da emissao, com links simulados para pasta e documento final."
-                  : "O relatorio fica pronto para gerar o `.docx`, salvar no Microsoft 365 e manter a revisao feita pelo tecnico dentro da plataforma."}
+                O relatorio fica pronto para gerar o `.docx`, salvar no Microsoft 365 e manter a revisao feita pelo tecnico dentro da plataforma.
               </p>
             </div>
             <div className="flex flex-wrap gap-3">
@@ -588,7 +506,7 @@ export function ReportReviewPlatformPage() {
                 <Button variant="outline" asChild>
                   <a href={report.microsoft365.docxUrl} target="_blank" rel="noreferrer">
                     <Download className="mr-2 h-4 w-4" />
-                    {isLocalDemo ? "Abrir previa demo" : "Abrir .docx salvo"}
+                    Abrir .docx salvo
                   </a>
                 </Button>
               ) : (

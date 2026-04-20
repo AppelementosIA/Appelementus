@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { BriefcaseBusiness, Eye, Leaf, ShieldCheck } from "lucide-react";
+import { BriefcaseBusiness, Leaf, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { useAuth } from "@/hooks/useAuth";
@@ -8,9 +8,7 @@ export function LoginPage() {
   const {
     authError,
     isLoading,
-    isLocalDemoEnabled,
     isMicrosoftReady,
-    loginAsLocalDemo,
     loginWithMicrosoft,
   } = useAuth();
   const [startingLogin, setStartingLogin] = useState(false);
@@ -25,7 +23,6 @@ export function LoginPage() {
   };
 
   const loading = isLoading || startingLogin;
-  const showDemoButton = isLocalDemoEnabled;
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-elementus-blue to-elementus-green p-4">
@@ -54,18 +51,6 @@ export function LoginPage() {
             {loading ? "Conectando..." : "Entrar com Microsoft 365"}
           </Button>
 
-          {showDemoButton ? (
-            <Button
-              variant="outline"
-              className="w-full"
-              disabled={loading}
-              onClick={() => loginAsLocalDemo("ceo")}
-            >
-              <Eye className="mr-2 h-4 w-4" />
-              Entrar em modo demo local
-            </Button>
-          ) : null}
-
           {!isMicrosoftReady ? (
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
               <div className="flex items-center gap-2 font-medium">
@@ -76,13 +61,6 @@ export function LoginPage() {
                 Defina `VITE_MICROSOFT_CLIENT_ID`, `VITE_MICROSOFT_TENANT_ID` e
                 `VITE_MICROSOFT_REDIRECT_URI` para liberar o login corporativo.
               </p>
-            </div>
-          ) : null}
-
-          {showDemoButton ? (
-            <div className="rounded-xl border border-elementus-blue/20 bg-elementus-blue/5 p-4 text-sm text-muted-foreground">
-              O modo demo libera a navegacao local e simula a emissao final para voce visualizar a
-              plataforma sem depender do tenant Microsoft configurado.
             </div>
           ) : null}
 

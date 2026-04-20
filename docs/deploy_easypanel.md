@@ -118,7 +118,6 @@ Baseie-se em `infra/easypanel/dashboard.env.example`.
 Obrigatorias nesta fase:
 
 - `VITE_API_URL=https://api.elementus.seudominio.com`
-- `VITE_ENABLE_LOCAL_DEMO=false`
 - `VITE_MICROSOFT_CLIENT_ID`
 - `VITE_MICROSOFT_TENANT_ID`
 - `VITE_MICROSOFT_REDIRECT_URI=https://app.elementus.seudominio.com/login`
@@ -176,15 +175,6 @@ Depois dos dois deploys:
    - status alterado para emitido
    - pasta do Microsoft 365 acessivel
    - `.docx` salvo
-
-## Homologacao rapida
-
-Se quiser mostrar a plataforma antes do tenant Microsoft ficar pronto:
-
-- use um ambiente separado
-- no dashboard de homologacao, pode manter `VITE_ENABLE_LOCAL_DEMO=true`
-
-Assim o botao `Entrar em modo demo local` continua disponivel.
 
 ## Checklist final
 

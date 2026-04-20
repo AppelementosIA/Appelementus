@@ -10,15 +10,13 @@ import {
   type MicrosoftSession,
 } from "@/lib/microsoftAuth";
 
-const LOCAL_DEMO_STORAGE_KEY = "elementus.local-demo.session";
-
 export interface AuthUser {
   id: string;
   email: string;
   name: string;
   role: UserRole;
   avatar_url?: string;
-  provider: "microsoft365" | "local-demo";
+  provider: "microsoft365";
   tenant_id?: string;
 }
 
@@ -28,10 +26,8 @@ interface AuthContextType {
   isLoading: boolean;
   authError: string | null;
   isMicrosoftReady: boolean;
-  isLocalDemoEnabled: boolean;
   hasAccess: (minRole: UserRole) => boolean;
   loginWithMicrosoft: () => Promise<void>;
-  loginAsLocalDemo: (role?: UserRole) => void;
   logout: () => void;
   getMicrosoftAccessToken: () => Promise<string>;
 }
@@ -45,10 +41,6 @@ const ROLE_LEVEL: Record<UserRole, number> = {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-function isLocalDemoEnabled() {
-  return import.meta.env.DEV || import.meta.env.VITE_ENABLE_LOCAL_DEMO === "true";
-}
-
 function mapSessionToUser(session: MicrosoftSession): AuthUser {
   return {
     id: session.account.id,
@@ -60,61 +52,12 @@ function mapSessionToUser(session: MicrosoftSession): AuthUser {
   };
 }
 
-function buildLocalDemoUser(role: UserRole = "ceo"): AuthUser {
-  const profiles: Record<UserRole, { name: string; email: string }> = {
-    ceo: {
-      name: "Sanzio Rafael Demo",
-      email: "demo.ceo@elementus.local",
-    },
-    manager: {
-      name: "Ana Costa Demo",
-      email: "demo.gerencia@elementus.local",
-    },
-    supervisor: {
-      name: "Carlos Silva Demo",
-      email: "demo.supervisao@elementus.local",
-    },
-    technician: {
-      name: "Pedro Almeida Demo",
-      email: "demo.tecnico@elementus.local",
-    },
-  };
-
-  return {
-    id: `demo-${role}`,
-    name: profiles[role].name,
-    email: profiles[role].email,
-    role,
-    provider: "local-demo",
-  };
-}
-
-function saveLocalDemoUser(user: AuthUser) {
-  localStorage.setItem(LOCAL_DEMO_STORAGE_KEY, JSON.stringify(user));
-}
-
-function loadLocalDemoUser() {
-  const raw = localStorage.getItem(LOCAL_DEMO_STORAGE_KEY);
-
-  if (!raw) {
-    return null;
-  }
-
-  try {
-    return JSON.parse(raw) as AuthUser;
-  } catch {
-    localStorage.removeItem(LOCAL_DEMO_STORAGE_KEY);
-    return null;
-  }
-}
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<MicrosoftSession | null>(null);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
   const microsoftReady = isMicrosoftConfigured();
-  const localDemoEnabled = isLocalDemoEnabled();
 
   useEffect(() => {
     let active = true;
@@ -124,18 +67,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setAuthError(null);
 
         const redirectSession = await completeMicrosoftLogin();
-        const demoUser = redirectSession ? null : loadLocalDemoUser();
-        const nextSession =
-          redirectSession ?? (demoUser ? null : await ensureMicrosoftSession());
+        const nextSession = redirectSession ?? (await ensureMicrosoftSession());
 
         if (!active) {
           return;
         }
 
         setSession(nextSession);
-        setUser(
-          nextSession ? mapSessionToUser(nextSession) : demoUser ? demoUser : null
-        );
+        setUser(nextSession ? mapSessionToUser(nextSession) : null);
       } catch (error) {
         clearMicrosoftSession();
 
@@ -173,18 +112,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await startMicrosoftLogin();
   };
 
-  const loginAsLocalDemo = (role: UserRole = "ceo") => {
-    const demoUser = buildLocalDemoUser(role);
-    clearMicrosoftSession();
-    saveLocalDemoUser(demoUser);
-    setSession(null);
-    setUser(demoUser);
-    setAuthError(null);
-  };
-
   const logout = () => {
     clearMicrosoftSession();
-    localStorage.removeItem(LOCAL_DEMO_STORAGE_KEY);
     setSession(null);
     setUser(null);
     setAuthError(null);
@@ -195,10 +124,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const getMicrosoftAccessToken = async () => {
-    if (user?.provider === "local-demo") {
-      throw new Error("O modo demo local simula a emissao sem usar o Microsoft 365 real.");
-    }
-
     const nextSession = await ensureMicrosoftSession();
 
     if (!nextSession) {
@@ -219,14 +144,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isLoading,
       authError,
       isMicrosoftReady: microsoftReady,
-      isLocalDemoEnabled: localDemoEnabled,
       hasAccess,
       loginWithMicrosoft,
-      loginAsLocalDemo,
       logout,
       getMicrosoftAccessToken,
     }),
-    [authError, isLoading, localDemoEnabled, microsoftReady, session, user]
+    [authError, isLoading, microsoftReady, session, user]
   );
 
   return (

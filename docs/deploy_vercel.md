@@ -12,7 +12,7 @@ Nesta fase, publique apenas o `dashboard` no Vercel.
 - projeto no Vercel: ligado ao mesmo repositorio
 - root directory: `apps/dashboard`
 
-O backend pode continuar fora do Vercel por enquanto. Para ver a interface agora, o mais simples e usar o modo demo local/publicado.
+O backend pode continuar fora do Vercel por enquanto, mas o ambiente definitivo do dashboard precisa apontar para uma API real.
 
 ## Por que usar `apps/dashboard` como Root Directory
 
@@ -26,20 +26,11 @@ Foi adicionado `apps/dashboard/vercel.json` com:
 - `outputDirectory: dist`
 - `rewrite` para SPA, permitindo abrir rotas como `/reports`, `/projects` e `/login` sem erro 404
 
-## Variaveis minimas para ver a interface
+## Variaveis minimas do ambiente definitivo
 
-No primeiro deploy, use esta variavel no Vercel:
+No primeiro deploy definitivo, use no minimo:
 
-- `VITE_ENABLE_LOCAL_DEMO=true`
-
-Nesta primeira publicacao, pode deixar `VITE_API_URL` sem configurar.
-
-Com isso, a plataforma abre em modo visual e usa fallback local quando a API nao estiver configurada.
-
-## Variaveis para Microsoft 365 depois
-
-Quando quiser ativar login real no Vercel, adicione:
-
+- `VITE_API_URL=https://SUA-API`
 - `VITE_MICROSOFT_CLIENT_ID`
 - `VITE_MICROSOFT_TENANT_ID`
 - `VITE_MICROSOFT_REDIRECT_URI=https://SEU-DOMINIO/login`
@@ -50,6 +41,19 @@ Quando quiser ativar login real no Vercel, adicione:
 - `VITE_MICROSOFT_MANAGER_EMAILS`
 - `VITE_MICROSOFT_SUPERVISOR_EMAILS`
 
+Sem `VITE_API_URL`, a navegacao de cadastros e a emissao final nao ficam conectadas ao ambiente oficial.
+
+## Configuracao do Microsoft 365 / Entra
+
+No Microsoft Entra, o aplicativo precisa estar registrado como `Single-page application` e usar o dominio do Vercel como redirect URI:
+
+- `VITE_MICROSOFT_REDIRECT_URI=https://SEU-DOMINIO/login`
+
+Tambem e preciso garantir que a API tenha configurado:
+
+- `MICROSOFT_365_DRIVE_ID`
+- `MICROSOFT_365_ROOT_FOLDER`
+
 ## Passo a passo no Vercel
 
 1. Entrar no Vercel
@@ -57,7 +61,7 @@ Quando quiser ativar login real no Vercel, adicione:
 3. Importar o repositorio `AppelementosIA/Appelementus`
 4. Em `Root Directory`, escolher `apps/dashboard`
 5. Confirmar que o framework detectado e `Vite`
-6. Cadastrar as variaveis minimas
+6. Cadastrar as variaveis do ambiente definitivo
 7. Fazer o deploy
 
 ## Resultado esperado
@@ -65,14 +69,10 @@ Quando quiser ativar login real no Vercel, adicione:
 Depois do deploy:
 
 - a rota `/login` abre normalmente
-- o botao `Entrar em modo demo local` aparece
-- o dashboard pode ser navegado mesmo sem API real
+- o acesso acontece com a conta Microsoft 365 da Elementus
+- o dashboard carrega os dados reais da API configurada
 - rotas internas continuam funcionando ao atualizar a pagina
 
-## Proximo passo depois do preview
+## Observacao importante
 
-Quando a interface estiver aprovada, o ideal e:
-
-1. ligar a API em um dominio proprio
-2. preencher `VITE_API_URL` com a URL real da API
-3. ajustar o redirect URI do Microsoft Entra para o dominio do Vercel
+Se voce quiser usar o projeto como ambiente oficial, o Vercel deve publicar o frontend e a API precisa estar online em um dominio acessivel publicamente.
