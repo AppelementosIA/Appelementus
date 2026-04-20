@@ -5,12 +5,18 @@ import type {
   UserOnboardingStatus,
   UserRole,
 } from "@elementus/shared";
-import { ROLE_HIERARCHY } from "@elementus/shared";
 import { Router } from "express";
 import { fetchMicrosoftGraphUserProfile } from "../lib/microsoft-graph.js";
 import { supabase } from "../lib/supabase.js";
 
 const router: import("express").Router = Router();
+
+const ROLE_HIERARCHY: Record<UserRole, number> = {
+  ceo: 4,
+  manager: 3,
+  supervisor: 2,
+  technician: 1,
+};
 
 const userSelect = `
   id,
