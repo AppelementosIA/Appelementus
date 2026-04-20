@@ -13,6 +13,12 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: "50mb" }));
 
+const healthPayload = {
+  status: "ok",
+  service: "elementus-api",
+  version: "0.1.0",
+};
+
 // Routes
 app.use("/api/projects", projectsRouter);
 app.use("/api/campaigns", campaignsRouter);
@@ -22,10 +28,18 @@ app.use("/api/templates", templatesRouter);
 app.use("/api/users", usersRouter);
 
 // Health check
-app.get("/api/health", (_req, res) => {
-  res.json({ status: "ok", service: "elementus-api", version: "0.1.0" });
+app.get("/", (_req, res) => {
+  res.json(healthPayload);
 });
 
-app.listen(config.port, () => {
+app.get("/health", (_req, res) => {
+  res.json(healthPayload);
+});
+
+app.get("/api/health", (_req, res) => {
+  res.json(healthPayload);
+});
+
+app.listen(config.port, "0.0.0.0", () => {
   console.log(`Elementus API running on port ${config.port}`);
 });

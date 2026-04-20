@@ -3,7 +3,7 @@ import { loadAppEnvironment } from "./env.js";
 loadAppEnvironment();
 
 export const config = {
-  port: parseInt(process.env.API_PORT || "3001", 10),
+  port: parseInt(process.env.PORT || process.env.API_PORT || "3001", 10),
   supabase: {
     url: process.env.SUPABASE_URL || "",
     serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || "",
