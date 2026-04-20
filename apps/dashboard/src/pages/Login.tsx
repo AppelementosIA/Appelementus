@@ -10,7 +10,9 @@ export function LoginPage() {
     authError,
     isLoading,
     isMicrosoftReady,
+    isPresentationEnabled,
     loginWithMicrosoft,
+    loginForPresentation,
   } = useAuth();
   const [startingLogin, setStartingLogin] = useState(false);
   const configurationError = getMicrosoftConfigurationError();
@@ -53,6 +55,12 @@ export function LoginPage() {
             {loading ? "Conectando..." : "Entrar com Microsoft 365"}
           </Button>
 
+          {isPresentationEnabled ? (
+            <Button className="w-full" variant="outline" onClick={loginForPresentation}>
+              Entrar em modo de apresentacao
+            </Button>
+          ) : null}
+
           {!isMicrosoftReady ? (
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
               <div className="flex items-center gap-2 font-medium">
@@ -63,6 +71,14 @@ export function LoginPage() {
                 {configurationError ||
                   `Defina o login Microsoft 365 no ambiente do Vercel. O redirect usa automaticamente ${window.location.origin}/login quando VITE_MICROSOFT_REDIRECT_URI nao for informado.`}
               </p>
+            </div>
+          ) : null}
+
+          {isPresentationEnabled ? (
+            <div className="rounded-xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-900">
+              O modo de apresentacao libera a navegacao visual da plataforma sem depender da
+              aprovacao do Microsoft 365. Emissao real, onboarding e sincronizacao de usuarios
+              continuam bloqueados ate a aprovacao do tenant.
             </div>
           ) : null}
 

@@ -11,8 +11,13 @@ import {
 } from "@/lib/microsoftAuth";
 import { fetchCurrentPlatformUser, syncPlatformSession } from "@/lib/userApi";
 
+const PRESENTATION_STORAGE_KEY = "elementus.presentation.user";
+const PRESENTATION_QUERY_KEY = "presentation";
+
+type AuthProvider = "microsoft365" | "presentation";
+
 export interface AuthUser extends PlatformUser {
-  provider: "microsoft365";
+  provider: AuthProvider;
 }
 
 interface AuthContextType {
@@ -21,8 +26,11 @@ interface AuthContextType {
   isLoading: boolean;
   authError: string | null;
   isMicrosoftReady: boolean;
+  isPresentationEnabled: boolean;
+  isPresentationMode: boolean;
   hasAccess: (minRole: UserRole) => boolean;
   loginWithMicrosoft: () => Promise<void>;
+  loginForPresentation: () => void;
   logout: () => void;
   getMicrosoftAccessToken: () => Promise<string>;
   refreshPlatformUser: () => Promise<AuthUser | null>;
@@ -38,11 +46,71 @@ const ROLE_LEVEL: Record<UserRole, number> = {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
+function getPresentationRole(): UserRole {
+  const role = import.meta.env.VITE_PRESENTATION_ROLE;
+
+  if (role === "ceo" || role === "manager" || role === "supervisor" || role === "technician") {
+    return role;
+  }
+
+  return "supervisor";
+}
+
+function hasPresentationQueryFlag() {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  return new URLSearchParams(window.location.search).get(PRESENTATION_QUERY_KEY) === "1";
+}
+
+function isPresentationAccessEnabled() {
+  return import.meta.env.VITE_ENABLE_PRESENTATION_ACCESS === "true" || hasPresentationQueryFlag();
+}
+
 function mapPlatformUserToAuthUser(user: PlatformUser): AuthUser {
   return {
     provider: "microsoft365",
     ...user,
   };
+}
+
+function buildPresentationUser(): AuthUser {
+  const now = new Date().toISOString();
+
+  return {
+    id: "presentation-user",
+    entra_oid: "presentation-user",
+    email: import.meta.env.VITE_PRESENTATION_EMAIL || "apresentacao@elementus.local",
+    name: import.meta.env.VITE_PRESENTATION_NAME || "Acesso de Apresentacao",
+    role: getPresentationRole(),
+    tenant_id: "presentation",
+    active: true,
+    onboarding_status: "active",
+    created_at: now,
+    updated_at: now,
+    provider: "presentation",
+    professional_profile: null,
+  };
+}
+
+function loadPresentationUser() {
+  const raw = localStorage.getItem(PRESENTATION_STORAGE_KEY);
+
+  if (!raw) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(raw) as AuthUser;
+  } catch {
+    localStorage.removeItem(PRESENTATION_STORAGE_KEY);
+    return null;
+  }
+}
+
+function savePresentationUser(user: AuthUser) {
+  localStorage.setItem(PRESENTATION_STORAGE_KEY, JSON.stringify(user));
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -51,6 +119,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
   const microsoftReady = isMicrosoftConfigured();
+  const presentationEnabled = isPresentationAccessEnabled();
 
   useEffect(() => {
     let active = true;
@@ -69,7 +138,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSession(nextSession);
 
         if (!nextSession) {
-          setUser(null);
+          if (presentationEnabled) {
+            setUser(loadPresentationUser());
+          } else {
+            setUser(null);
+          }
           return;
         }
 
@@ -119,8 +192,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await startMicrosoftLogin();
   };
 
+  const loginForPresentation = () => {
+    const previewUser = buildPresentationUser();
+    savePresentationUser(previewUser);
+    setSession(null);
+    setUser(previewUser);
+    setAuthError(null);
+  };
+
   const logout = () => {
     clearMicrosoftSession();
+    localStorage.removeItem(PRESENTATION_STORAGE_KEY);
     setSession(null);
     setUser(null);
     setAuthError(null);
@@ -131,6 +213,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const getMicrosoftAccessToken = async () => {
+    if (user?.provider === "presentation") {
+      throw new Error(
+        "O modo apresentacao nao emite relatorios nem sincroniza dados reais. Use apenas para demonstracao visual."
+      );
+    }
+
     const nextSession = await ensureMicrosoftSession();
 
     if (!nextSession) {
@@ -144,6 +232,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const refreshPlatformUser = async () => {
+    if (user?.provider === "presentation") {
+      return user;
+    }
+
     const accessToken = await getMicrosoftAccessToken();
     const nextUser = await fetchCurrentPlatformUser(accessToken);
     const mappedUser = mapPlatformUserToAuthUser(nextUser);
@@ -152,7 +244,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const setPlatformUser = (nextUser: PlatformUser) => {
-    setUser(mapPlatformUserToAuthUser(nextUser));
+    setUser((currentUser) => ({
+      ...(currentUser?.provider === "presentation"
+        ? { provider: "presentation" as const }
+        : { provider: "microsoft365" as const }),
+      ...nextUser,
+    }));
   };
 
   const value = useMemo(
@@ -162,14 +259,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isLoading,
       authError,
       isMicrosoftReady: microsoftReady,
+      isPresentationEnabled: presentationEnabled,
+      isPresentationMode: user?.provider === "presentation",
       hasAccess,
       loginWithMicrosoft,
+      loginForPresentation,
       logout,
       getMicrosoftAccessToken,
       refreshPlatformUser,
       setPlatformUser,
     }),
-    [authError, isLoading, microsoftReady, session, user]
+    [authError, isLoading, microsoftReady, presentationEnabled, session, user]
   );
 
   return (
