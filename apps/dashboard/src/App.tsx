@@ -10,11 +10,13 @@ import { ReportReviewPlatformPage } from "@/pages/ReportReviewPlatform";
 import { DataValidationPage } from "@/pages/DataValidation";
 import { TemplatesPage } from "@/pages/Templates";
 import { SettingsPlatformPage } from "@/pages/SettingsPlatform";
-import { UsersPage } from "@/pages/Users";
+import { UsersPlatformPage } from "@/pages/UsersPlatform";
 import { LoginPage } from "@/pages/Login";
+import { OnboardingPage } from "@/pages/Onboarding";
 
 function AppRoutes() {
   const { user, isLoading } = useAuth();
+  const needsOnboarding = user && user.onboarding_status !== "active";
 
   if (isLoading) {
     return (
@@ -31,9 +33,28 @@ function AppRoutes() {
 
   return (
     <Routes>
-      <Route path="/login" element={user ? <Navigate to="/" replace /> : <LoginPage />} />
+      <Route
+        path="/login"
+        element={user ? <Navigate to={needsOnboarding ? "/onboarding" : "/"} replace /> : <LoginPage />}
+      />
+      <Route
+        path="/onboarding"
+        element={user ? <OnboardingPage /> : <Navigate to="/login" replace />}
+      />
 
-      <Route element={user ? <DashboardLayout /> : <Navigate to="/login" replace />}>
+      <Route
+        element={
+          user ? (
+            needsOnboarding ? (
+              <Navigate to="/onboarding" replace />
+            ) : (
+              <DashboardLayout />
+            )
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        }
+      >
         <Route path="/" element={<DashboardPlatformPage />} />
         <Route path="/projects" element={<ProjectsPage />} />
         <Route path="/field-data" element={<FieldDataPage />} />
@@ -42,11 +63,14 @@ function AppRoutes() {
         <Route path="/reports/:id" element={<ReportReviewPlatformPage />} />
         <Route path="/validation" element={<DataValidationPage />} />
         <Route path="/templates" element={<TemplatesPage />} />
-        <Route path="/users" element={<UsersPage />} />
+        <Route path="/users" element={<UsersPlatformPage />} />
         <Route path="/settings" element={<SettingsPlatformPage />} />
       </Route>
 
-      <Route path="*" element={<Navigate to={user ? "/" : "/login"} replace />} />
+      <Route
+        path="*"
+        element={<Navigate to={user ? (needsOnboarding ? "/onboarding" : "/") : "/login"} replace />}
+      />
     </Routes>
   );
 }

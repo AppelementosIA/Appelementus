@@ -6,6 +6,7 @@ import campaignsRouter from "./routes/campaigns.js";
 import reportsRouter from "./routes/reports-platform.js";
 import fieldDataRouter from "./routes/field-data.js";
 import templatesRouter from "./routes/templates.js";
+import usersRouter from "./routes/users.js";
 
 const app = express();
 
@@ -18,6 +19,7 @@ app.use("/api/campaigns", campaignsRouter);
 app.use("/api/reports", reportsRouter);
 app.use("/api/field-data", fieldDataRouter);
 app.use("/api/templates", templatesRouter);
+app.use("/api/users", usersRouter);
 
 // Health check
 app.get("/api/health", (_req, res) => {

@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import type { UserRole } from "@elementus/shared";
+import type { PlatformUser, UserRole } from "@elementus/shared";
 import {
   clearMicrosoftSession,
   completeMicrosoftLogin,
@@ -9,15 +9,10 @@ import {
   startMicrosoftLogin,
   type MicrosoftSession,
 } from "@/lib/microsoftAuth";
+import { fetchCurrentPlatformUser, syncPlatformSession } from "@/lib/userApi";
 
-export interface AuthUser {
-  id: string;
-  email: string;
-  name: string;
-  role: UserRole;
-  avatar_url?: string;
+export interface AuthUser extends PlatformUser {
   provider: "microsoft365";
-  tenant_id?: string;
 }
 
 interface AuthContextType {
@@ -30,6 +25,8 @@ interface AuthContextType {
   loginWithMicrosoft: () => Promise<void>;
   logout: () => void;
   getMicrosoftAccessToken: () => Promise<string>;
+  refreshPlatformUser: () => Promise<AuthUser | null>;
+  setPlatformUser: (user: PlatformUser) => void;
 }
 
 const ROLE_LEVEL: Record<UserRole, number> = {
@@ -41,14 +38,10 @@ const ROLE_LEVEL: Record<UserRole, number> = {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-function mapSessionToUser(session: MicrosoftSession): AuthUser {
+function mapPlatformUserToAuthUser(user: PlatformUser): AuthUser {
   return {
-    id: session.account.id,
-    email: session.account.email,
-    name: session.account.name,
-    role: session.role,
     provider: "microsoft365",
-    tenant_id: session.account.tenantId,
+    ...user,
   };
 }
 
@@ -74,7 +67,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
 
         setSession(nextSession);
-        setUser(nextSession ? mapSessionToUser(nextSession) : null);
+
+        if (!nextSession) {
+          setUser(null);
+          return;
+        }
+
+        const syncedUser = await syncPlatformSession({
+          accessToken: nextSession.accessToken,
+        });
+
+        if (!active) {
+          return;
+        }
+
+        setUser(mapPlatformUserToAuthUser(syncedUser));
       } catch (error) {
         clearMicrosoftSession();
 
@@ -133,8 +140,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     setSession(nextSession);
-    setUser(mapSessionToUser(nextSession));
     return nextSession.accessToken;
+  };
+
+  const refreshPlatformUser = async () => {
+    const accessToken = await getMicrosoftAccessToken();
+    const nextUser = await fetchCurrentPlatformUser(accessToken);
+    const mappedUser = mapPlatformUserToAuthUser(nextUser);
+    setUser(mappedUser);
+    return mappedUser;
+  };
+
+  const setPlatformUser = (nextUser: PlatformUser) => {
+    setUser(mapPlatformUserToAuthUser(nextUser));
   };
 
   const value = useMemo(
@@ -148,6 +166,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loginWithMicrosoft,
       logout,
       getMicrosoftAccessToken,
+      refreshPlatformUser,
+      setPlatformUser,
     }),
     [authError, isLoading, microsoftReady, session, user]
   );

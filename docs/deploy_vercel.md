@@ -35,13 +35,14 @@ No primeiro deploy definitivo, use no minimo:
 - `VITE_MICROSOFT_TENANT_ID` (recomendado para prender o login ao tenant da Elementus)
 - `VITE_MICROSOFT_SCOPES=openid profile email offline_access User.Read Files.ReadWrite`
 - `VITE_MICROSOFT_ALLOWED_DOMAINS`
-- `VITE_MICROSOFT_DEFAULT_ROLE`
-- `VITE_MICROSOFT_CEO_EMAILS`
-- `VITE_MICROSOFT_MANAGER_EMAILS`
-- `VITE_MICROSOFT_SUPERVISOR_EMAILS`
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
 
 Se `VITE_MICROSOFT_REDIRECT_URI` nao for informado, o dashboard usa automaticamente
 `https://SEU-DOMINIO/login`.
+
+Os cargos, assinaturas e status do primeiro acesso agora ficam no Supabase, nao mais em variaveis
+de ambiente do Vercel.
 
 Sem `VITE_API_URL`, a navegacao de cadastros e a emissao final nao ficam conectadas ao ambiente oficial.
 

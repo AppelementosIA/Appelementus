@@ -12,6 +12,14 @@ export interface MicrosoftFolderResult extends MicrosoftDriveItem {
   path: string;
 }
 
+export interface MicrosoftGraphUserProfile {
+  oid: string;
+  email: string;
+  name: string;
+  tenantId?: string;
+  phone?: string;
+}
+
 function getDriveBasePath() {
   return config.microsoft365.driveId
     ? `/drives/${encodeURIComponent(config.microsoft365.driveId)}`
@@ -20,6 +28,10 @@ function getDriveBasePath() {
 
 function buildGraphUrl(path: string) {
   return `${GRAPH_BASE_URL}${getDriveBasePath()}${path}`;
+}
+
+function buildApiUrl(path: string) {
+  return `${GRAPH_BASE_URL}${path}`;
 }
 
 function sanitizeSegment(value: string) {
@@ -79,6 +91,54 @@ async function graphRequest<T>(
   return (await response.json()) as T;
 }
 
+async function graphApiRequest<T>(
+  path: string,
+  accessToken: string,
+  init?: RequestInit
+): Promise<T> {
+  const response = await fetch(buildApiUrl(path), {
+    ...init,
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      ...(init?.headers ?? {}),
+    },
+  });
+
+  if (!response.ok) {
+    let errorMessage = `Microsoft Graph ${response.status}`;
+
+    try {
+      const payload = (await response.json()) as {
+        error?: { message?: string };
+      };
+      errorMessage = payload.error?.message || errorMessage;
+    } catch {
+      // ignore json parsing
+    }
+
+    throw new Error(errorMessage);
+  }
+
+  return (await response.json()) as T;
+}
+
+function decodeJwtPayload<T>(token: string): T | null {
+  const parts = token.split(".");
+
+  if (parts.length < 2) {
+    return null;
+  }
+
+  try {
+    const normalized = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padding = "=".repeat((4 - (normalized.length % 4 || 4)) % 4);
+    const json = Buffer.from(normalized + padding, "base64").toString("utf-8");
+    return JSON.parse(json) as T;
+  } catch {
+    return null;
+  }
+}
+
 async function listChildren(parentId: string, accessToken: string) {
   const payload = await graphRequest<{ value: Array<MicrosoftDriveItem & { folder?: object }> }>(
     `/items/${parentId}/children?$select=id,name,webUrl,folder`,
@@ -135,6 +195,31 @@ export async function ensureMicrosoftFolder(folderPath: string, accessToken: str
     ...current,
     path: currentPath,
   } satisfies MicrosoftFolderResult;
+}
+
+export async function fetchMicrosoftGraphUserProfile(accessToken: string) {
+  const me = await graphApiRequest<{
+    id: string;
+    displayName?: string;
+    mail?: string | null;
+    userPrincipalName?: string | null;
+    mobilePhone?: string | null;
+    businessPhones?: string[] | null;
+  }>("/me?$select=id,displayName,mail,userPrincipalName,mobilePhone,businessPhones", accessToken);
+  const tokenClaims = decodeJwtPayload<{ oid?: string; tid?: string }>(accessToken);
+  const email = (me.mail || me.userPrincipalName || "").trim().toLowerCase();
+
+  if (!email) {
+    throw new Error("Nao foi possivel identificar o e-mail da conta Microsoft 365.");
+  }
+
+  return {
+    oid: tokenClaims?.oid || me.id,
+    email,
+    name: me.displayName || email,
+    tenantId: tokenClaims?.tid,
+    phone: me.mobilePhone || me.businessPhones?.[0] || undefined,
+  } satisfies MicrosoftGraphUserProfile;
 }
 
 export async function uploadFileToMicrosoftFolder(input: {
