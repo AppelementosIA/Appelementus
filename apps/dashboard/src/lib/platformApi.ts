@@ -11,7 +11,7 @@ import {
   type ReportSectionRecord,
 } from "@/data/platform";
 
-const apiBaseUrl = (import.meta.env.VITE_API_URL || "http://localhost:3001").replace(/\/$/, "");
+const apiBaseUrl = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
 
 interface ApiProjectRow extends Project {
   microsoft_365_folder?: string | null;
