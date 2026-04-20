@@ -65,6 +65,11 @@ interface MicrosoftAuthConfig {
   roleEmails: Record<Exclude<UserRole, "technician">, string[]>;
 }
 
+const GUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const DOMAIN_TENANT_REGEX = /^(?!-)(?:[a-z0-9-]{1,63}\.)+[a-z]{2,63}$/i;
+const MICROSOFT_SHARED_TENANTS = new Set(["common", "organizations", "consumers"]);
+
 function normalizeEmail(value: string) {
   return value.trim().toLowerCase();
 }
@@ -82,6 +87,26 @@ function getRoleFromEnv(value: string | undefined): UserRole {
   }
 
   return "technician";
+}
+
+function looksLikePlaceholder(value: string) {
+  return /(application\s*\(client\)\s*id|directory\s*\(tenant\)\s*id|client id|tenant id)/i.test(
+    value
+  );
+}
+
+function isValidClientId(value: string) {
+  return GUID_REGEX.test(value.trim());
+}
+
+function isValidTenantId(value: string) {
+  const normalized = value.trim().toLowerCase();
+
+  return (
+    GUID_REGEX.test(normalized) ||
+    DOMAIN_TENANT_REGEX.test(normalized) ||
+    MICROSOFT_SHARED_TENANTS.has(normalized)
+  );
 }
 
 export function getMicrosoftAuthConfig(): MicrosoftAuthConfig {
@@ -113,9 +138,28 @@ export function getMicrosoftAuthConfig(): MicrosoftAuthConfig {
   };
 }
 
-export function isMicrosoftConfigured() {
+export function getMicrosoftConfigurationError() {
   const config = getMicrosoftAuthConfig();
-  return Boolean(config.clientId && config.redirectUri);
+  const clientId = config.clientId.trim();
+  const tenantId = config.tenantId.trim();
+
+  if (!clientId) {
+    return "Defina VITE_MICROSOFT_CLIENT_ID com o Application (client) ID do app no Microsoft Entra.";
+  }
+
+  if (looksLikePlaceholder(clientId) || !isValidClientId(clientId)) {
+    return "VITE_MICROSOFT_CLIENT_ID precisa receber o GUID real do Application (client) ID, nao o texto do rotulo.";
+  }
+
+  if (tenantId && (looksLikePlaceholder(tenantId) || !isValidTenantId(tenantId))) {
+    return "VITE_MICROSOFT_TENANT_ID precisa receber o GUID real do Directory (tenant) ID, um dominio valido do tenant, ou common/organizations/consumers.";
+  }
+
+  return null;
+}
+
+export function isMicrosoftConfigured() {
+  return !getMicrosoftConfigurationError();
 }
 
 function getAuthorityBase(config = getMicrosoftAuthConfig()) {
@@ -265,9 +309,10 @@ async function redeemToken(params: URLSearchParams) {
 
 export async function startMicrosoftLogin() {
   const config = getMicrosoftAuthConfig();
+  const configurationError = getMicrosoftConfigurationError();
 
-  if (!isMicrosoftConfigured()) {
-    throw new Error("Configure o login Microsoft 365 antes de entrar na plataforma.");
+  if (configurationError) {
+    throw new Error(configurationError);
   }
 
   const { verifier, challenge } = await createPkcePair();

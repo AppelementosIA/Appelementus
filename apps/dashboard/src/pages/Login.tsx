@@ -3,6 +3,7 @@ import { BriefcaseBusiness, Leaf, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { useAuth } from "@/hooks/useAuth";
+import { getMicrosoftConfigurationError } from "@/lib/microsoftAuth";
 
 export function LoginPage() {
   const {
@@ -12,6 +13,7 @@ export function LoginPage() {
     loginWithMicrosoft,
   } = useAuth();
   const [startingLogin, setStartingLogin] = useState(false);
+  const configurationError = getMicrosoftConfigurationError();
 
   const handleLogin = async () => {
     try {
@@ -58,10 +60,8 @@ export function LoginPage() {
                 Configuração necessária
               </div>
               <p className="mt-2">
-                Defina `VITE_MICROSOFT_CLIENT_ID` para liberar o login corporativo. O
-                `VITE_MICROSOFT_TENANT_ID` e recomendado para prender o acesso ao tenant da
-                Elementus, e o redirect usa automaticamente `{window.location.origin}/login`
-                quando `VITE_MICROSOFT_REDIRECT_URI` nao for informado.
+                {configurationError ||
+                  `Defina o login Microsoft 365 no ambiente do Vercel. O redirect usa automaticamente ${window.location.origin}/login quando VITE_MICROSOFT_REDIRECT_URI nao for informado.`}
               </p>
             </div>
           ) : null}
