@@ -40,12 +40,13 @@ Tabelas:
 
 ## Como aplicar no Supabase
 
-Com os dados que voce me passou ate agora, eu consigo preparar o codigo e a migracao, mas ainda nao consigo executar a criacao remota do schema sozinho porque a API precisa da `SUPABASE_SERVICE_ROLE_KEY` para gravar no banco e eu nao recebi essa chave.
+A migracao do primeiro acesso ja foi aplicada no projeto Supabase desta operacao e criou:
 
-Voce tem dois caminhos:
+- `platform_users`
+- `platform_user_profiles`
+- `report_signers`
 
-1. Abrir o `SQL Editor` do Supabase e rodar o conteudo do arquivo `20260420_user_onboarding.sql`
-2. Me passar a `SUPABASE_SERVICE_ROLE_KEY` para eu terminar a integracao do ambiente da API com voce
+Os proximos passos agora sao conectar a API com a `SUPABASE_SERVICE_ROLE_KEY` e subir o frontend com as variaveis do dashboard.
 
 ## Variaveis de ambiente
 
@@ -61,6 +62,7 @@ Voce tem dois caminhos:
 Observacao:
 
 - o dashboard Vite agora aceita tanto `VITE_SUPABASE_*` quanto `NEXT_PUBLIC_SUPABASE_*`
+- para desenvolvimento local, prefira usar `apps/dashboard/.env.local`
 
 ### API
 
@@ -68,6 +70,10 @@ Observacao:
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `MICROSOFT_365_DRIVE_ID`
 - `MICROSOFT_365_ROOT_FOLDER`
+
+Observacao:
+
+- a API agora carrega automaticamente `apps/api/.env.local` e tambem o `.env.local` da raiz, sem sobrescrever variaveis que ja vierem do ambiente do servidor
 
 ## Observacoes operacionais
 

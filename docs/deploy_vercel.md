@@ -38,6 +38,8 @@ No primeiro deploy definitivo, use no minimo:
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
 
+Para desenvolvimento local, o frontend pode ler essas mesmas variaveis por `apps/dashboard/.env.local`.
+
 Se `VITE_MICROSOFT_REDIRECT_URI` nao for informado, o dashboard usa automaticamente
 `https://SEU-DOMINIO/login`.
 
