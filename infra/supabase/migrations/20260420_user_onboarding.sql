@@ -61,7 +61,7 @@ create table if not exists public.platform_user_profiles (
 
 create table if not exists public.report_signers (
   id uuid primary key default gen_random_uuid(),
-  report_id uuid not null references public.reports(id) on delete cascade,
+  report_id uuid not null,
   user_id uuid references public.platform_users(id) on delete set null,
   name_snapshot text not null,
   role_snapshot text,
@@ -73,6 +73,26 @@ create table if not exists public.report_signers (
   created_at timestamptz not null default timezone('utc', now()),
   updated_at timestamptz not null default timezone('utc', now())
 );
+
+do $$
+begin
+  if exists (
+    select 1
+    from information_schema.tables
+    where table_schema = 'public'
+      and table_name = 'reports'
+  ) and not exists (
+    select 1
+    from information_schema.table_constraints
+    where constraint_schema = 'public'
+      and table_name = 'report_signers'
+      and constraint_name = 'report_signers_report_id_fkey'
+  ) then
+    alter table public.report_signers
+      add constraint report_signers_report_id_fkey
+      foreign key (report_id) references public.reports(id) on delete cascade;
+  end if;
+end $$;
 
 create index if not exists idx_platform_users_email on public.platform_users(email);
 create index if not exists idx_platform_users_role on public.platform_users(app_role);
