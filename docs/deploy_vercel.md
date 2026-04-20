@@ -32,8 +32,7 @@ No primeiro deploy definitivo, use no minimo:
 
 - `VITE_API_URL=https://SUA-API`
 - `VITE_MICROSOFT_CLIENT_ID`
-- `VITE_MICROSOFT_TENANT_ID`
-- `VITE_MICROSOFT_REDIRECT_URI=https://SEU-DOMINIO/login`
+- `VITE_MICROSOFT_TENANT_ID` (recomendado para prender o login ao tenant da Elementus)
 - `VITE_MICROSOFT_SCOPES=openid profile email offline_access User.Read Files.ReadWrite`
 - `VITE_MICROSOFT_ALLOWED_DOMAINS`
 - `VITE_MICROSOFT_DEFAULT_ROLE`
@@ -41,11 +40,15 @@ No primeiro deploy definitivo, use no minimo:
 - `VITE_MICROSOFT_MANAGER_EMAILS`
 - `VITE_MICROSOFT_SUPERVISOR_EMAILS`
 
+Se `VITE_MICROSOFT_REDIRECT_URI` nao for informado, o dashboard usa automaticamente
+`https://SEU-DOMINIO/login`.
+
 Sem `VITE_API_URL`, a navegacao de cadastros e a emissao final nao ficam conectadas ao ambiente oficial.
 
 ## Configuracao do Microsoft 365 / Entra
 
-No Microsoft Entra, o aplicativo precisa estar registrado como `Single-page application` e usar o dominio do Vercel como redirect URI:
+No Microsoft Entra, o aplicativo precisa estar registrado como `Single-page application`
+e usar o dominio do Vercel como redirect URI:
 
 - `VITE_MICROSOFT_REDIRECT_URI=https://SEU-DOMINIO/login`
 

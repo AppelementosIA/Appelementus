@@ -58,8 +58,10 @@ export function LoginPage() {
                 Configuração necessária
               </div>
               <p className="mt-2">
-                Defina `VITE_MICROSOFT_CLIENT_ID`, `VITE_MICROSOFT_TENANT_ID` e
-                `VITE_MICROSOFT_REDIRECT_URI` para liberar o login corporativo.
+                Defina `VITE_MICROSOFT_CLIENT_ID` para liberar o login corporativo. O
+                `VITE_MICROSOFT_TENANT_ID` e recomendado para prender o acesso ao tenant da
+                Elementus, e o redirect usa automaticamente `{window.location.origin}/login`
+                quando `VITE_MICROSOFT_REDIRECT_URI` nao for informado.
               </p>
             </div>
           ) : null}
