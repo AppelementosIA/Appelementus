@@ -1,0 +1,20 @@
+{
+  "event": "messages.upsert",
+  "instance": "elementus",
+  "data": {
+    "key": {
+      "remoteJid": "5584999991200@s.whatsapp.net",
+      "fromMe": false,
+      "id": "ABGGHJKL1234567890"
+    },
+    "pushName": "Pedro Almeida",
+    "messageType": "imageMessage",
+    "message": {
+      "imageMessage": {
+        "caption": "Servico concluido no setor leste da ETE Jaguaribe. Segue foto geral.",
+        "url": "https://media.evolution.local/file/plantio-setor-leste.jpg"
+      }
+    },
+    "messageTimestamp": 1776792900
+  }
+}

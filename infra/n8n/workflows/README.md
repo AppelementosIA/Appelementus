@@ -3,22 +3,30 @@
 ## Arquivos prontos
 
 - `elementus-report-generation.workflow.json`: workflow completo para importar no n8n
+- `elementus-whatsapp-intake.workflow.json`: workflow completo para receber mensagens do WhatsApp e abrir o rascunho
+- `elementus-whatsapp-intake.md`: explicacao operacional do fluxo do bot
 
 ## Como importar
 
 1. No n8n, clique em `Import from File`.
-2. Selecione `elementus-report-generation.workflow.json`.
-3. Revise o path do webhook:
+2. Importe `elementus-whatsapp-intake.workflow.json` para o fluxo de conversa com o tecnico.
+3. Importe `elementus-report-generation.workflow.json` para o fluxo que gera a minuta do relatorio.
+4. Revise os webhooks:
+   `elementus-whatsapp-intake`
    `elementus-report-generation`
-4. Salve o workflow e deixe `Active` desligado ate terminar os cadastros.
+5. Salve os workflows e deixe `Active` desligado ate terminar os cadastros.
 
 ## Variaveis do n8n
 
 Preencha no ambiente do n8n:
 
 - `ELEMENTUS_API_URL`
+- `ELEMENTUS_DASHBOARD_URL`
 - `OPENAI_API_KEY`
 - `OPENAI_MODEL`
+- `EVOLUTION_API_URL`
+- `EVOLUTION_API_KEY`
+- `EVOLUTION_INSTANCE_NAME`
 
 ## Variavel da API
 
@@ -28,13 +36,13 @@ Depois que o workflow estiver ativo, copie a URL de producao do webhook e config
 
 ## Fluxo ponta a ponta
 
-1. O dashboard pede `POST /api/reports/generate`.
-2. A API cria o relatorio no banco.
-3. A API chama o webhook do n8n.
-4. O n8n busca o relatorio completo em `GET /api/reports/:id`.
-5. O n8n chama a OpenAI para gerar a minuta estruturada.
-6. O n8n atualiza o relatorio em `PATCH /api/reports/:id`.
-7. O dashboard abre o relatorio em modo de revisao.
+1. O tecnico envia mensagem, imagem ou localizacao no WhatsApp.
+2. O workflow `elementus-whatsapp-intake` grava isso em `field_data`, entende o contexto e pergunta o que faltar.
+3. Quando o minimo estiver completo, o mesmo workflow chama `POST /api/reports/generate`.
+4. A API cria o relatorio no banco e dispara o workflow `elementus-report-generation`.
+5. O workflow de geracao chama a OpenAI para montar a minuta estruturada.
+6. O relatorio volta para a API em `PATCH /api/reports/:id`.
+7. O dashboard abre o relatorio em modo de revisao para finalizar imagens, texto e envio.
 
 ## Teste minimo
 

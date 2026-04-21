@@ -1,0 +1,406 @@
+{
+  "name": "Elementus - WhatsApp Intake",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "elementus-whatsapp-intake",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "0f8e4a87-2b56-4fa4-a8e0-8a3f7b5f1981",
+      "name": "Webhook - Evolution Intake",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-1480, 200],
+      "webhookId": "elementus-whatsapp-intake"
+    },
+    {
+      "parameters": {
+        "jsCode": "const p=$json.body??$json;const d=p.data??p;const k=d.key??{};const m=d.message??{};const jid=k.remoteJid||d.remoteJid||'';const phone=String(k.participant||jid||d.sender||'').replace(/\\D/g,'');const fromMe=Boolean(k.fromMe??d.fromMe??false);const type=d.messageType||(m.imageMessage&&'imageMessage')||(m.locationMessage&&'locationMessage')||(m.audioMessage&&'audioMessage')||(m.documentMessage&&'documentMessage')||(m.extendedTextMessage&&'extendedTextMessage')||(m.conversation&&'conversation')||'unknown';const text=d.messageText||d.body||d.text||m.conversation||m.extendedTextMessage?.text||m.imageMessage?.caption||m.documentMessage?.caption||'';const loc=m.locationMessage?{latitude:Number(m.locationMessage.degreesLatitude??m.locationMessage.latitude??0)||null,longitude:Number(m.locationMessage.degreesLongitude??m.locationMessage.longitude??0)||null,label:m.locationMessage.name||m.locationMessage.address||null}:null;const media=m.imageMessage?.url||m.documentMessage?.url||m.audioMessage?.url||d.mediaUrl||null;const map={imageMessage:'photo',audioMessage:'audio',documentMessage:'document',locationMessage:'location',conversation:'text',extendedTextMessage:'text'};return [{json:{raw_payload:p,should_process:Boolean(phone)&&!fromMe,sender_phone:phone,technician_name:d.pushName||'Tecnico',message_id:k.id||d.id||'',message_type:type,field_data_type:map[type]||'text',text,caption:m.imageMessage?.caption||m.documentMessage?.caption||null,raw_media_url:media,location:loc,received_at:d.messageTimestamp?new Date(Number(d.messageTimestamp)*1000).toISOString():new Date().toISOString()}}];"
+      },
+      "id": "8500f9dc-f25b-44eb-b67a-97abf2ebd76d",
+      "name": "Normalize Evolution Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-1240, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "should-process",
+              "leftValue": "={{$json.should_process}}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "18853af7-6ad6-4b99-bd32-f1f8a75f25d9",
+      "name": "Should Process?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [-1000, 200]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ {\"ok\": true, \"ignored\": true} }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "5ad7b960-4325-4d1e-bd37-c0b937f4a626",
+      "name": "Respond Ignored",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [-760, 360]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.ELEMENTUS_API_URL}}/api/field-data/webhook",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\"type\":$json.field_data_type,\"status\":\"processing\",\"raw_content_url\":$json.raw_media_url,\"ai_extracted_text\":$json.text||$json.caption||null,\"whatsapp_message_id\":$json.message_id,\"sent_by\":$json.sender_phone,\"received_at\":$json.received_at,\"processed_data\":{\"intake\":{\"sender_phone\":$json.sender_phone,\"technician_name\":$json.technician_name,\"message_type\":$json.message_type,\"text\":$json.text,\"caption\":$json.caption,\"location\":$json.location,\"raw_media_url\":$json.raw_media_url}}} }}",
+        "options": {}
+      },
+      "id": "9ed3b664-4f22-48c9-85fe-19c80a5373c2",
+      "name": "Persist Raw Field Data",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-760, 120]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{$env.ELEMENTUS_API_URL}}/api/field-data?sent_by={{$('Normalize Evolution Event').first().json.sender_phone}}&limit=20",
+        "options": {}
+      },
+      "id": "6fc95702-3a0c-49b9-8062-63536aa767e3",
+      "name": "Fetch Sender History",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-520, 120]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{$env.ELEMENTUS_API_URL}}/api/projects?status=active",
+        "options": {}
+      },
+      "id": "05da924f-8889-4f07-bcb5-06706a8fcf91",
+      "name": "Fetch Active Projects",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-280, 120]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{$env.ELEMENTUS_API_URL}}/api/templates?active=true",
+        "options": {}
+      },
+      "id": "af6133f2-a1b0-4d02-8fdd-42bf1b5886cc",
+      "name": "Fetch Active Templates",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-40, 120]
+    },
+    {
+      "parameters": {
+        "jsCode": "const n=$('Normalize Evolution Event').first().json;const raw=$('Persist Raw Field Data').first().json;const h=$('Fetch Sender History').all().map(i=>i.json).filter(i=>i.id!==raw.id).slice(0,12);const ps=$('Fetch Active Projects').all().map(i=>i.json).map(p=>({id:p.id,name:p.name,client_name:p.client_name,enterprise:p.enterprise}));const ts=$('Fetch Active Templates').all().map(i=>i.json).map(t=>({id:t.id,name:t.name,type:t.type,description:t.description||null}));const schema={type:'object',additionalProperties:false,required:['intent','summary','reply_text','ready_for_report','suggested_project_id','suggested_template_id','client_name','location_text','service_type','period','report_number','report_title','campaign_label','responsible_technical','notes','missing_fields'],properties:{intent:{type:'string',enum:['new_report','update_report','irrelevant']},summary:{type:'string'},reply_text:{type:'string'},ready_for_report:{type:'boolean'},suggested_project_id:{type:['string','null']},suggested_template_id:{type:['string','null']},client_name:{type:['string','null']},location_text:{type:['string','null']},service_type:{type:['string','null']},period:{type:['string','null']},report_number:{type:['string','null']},report_title:{type:['string','null']},campaign_label:{type:['string','null']},responsible_technical:{type:['string','null']},notes:{type:'string'},missing_fields:{type:'array',items:{type:'string'}}}};const prompt=['MENSAGEM ATUAL',JSON.stringify({sender_phone:n.sender_phone,technician_name:n.technician_name,message_type:n.message_type,text:n.text,caption:n.caption,location:n.location},null,2),'','HISTORICO',JSON.stringify(h.map(i=>({type:i.type,text:i.ai_extracted_text||i.processed_data?.intake?.text||null,caption:i.processed_data?.intake?.caption||null,location:i.processed_data?.intake?.location||null,received_at:i.received_at})),null,2),'','PROJETOS',JSON.stringify(ps,null,2),'','TEMPLATES',JSON.stringify(ts,null,2),'','REGRAS','- Extraia os dados minimos para abrir um relatorio.','- Pergunte so a proxima informacao mais util.','- Marque ready_for_report como true apenas se projeto, template, local, periodo e contexto tecnico estiverem claros.','- Use apenas IDs validos dos catalogos.','- Nao invente dados.'].join('\\n');return[{json:{openai_request:{model:process.env.OPENAI_MODEL||'gpt-4.1-mini',input:[{role:'system',content:[{type:'input_text',text:'Voce organiza atendimentos da Elementus recebidos pelo WhatsApp. Seu trabalho e juntar mensagens, imagens, legendas e localizacao para abrir um relatorio com o minimo de atrito possivel. Nao invente projeto, template, local, periodo ou resultados.'}]},{role:'user',content:[{type:'input_text',text:prompt}]}],text:{format:{type:'json_schema',name:'elementus_whatsapp_intake',schema,strict:true}}}}}];"
+      },
+      "id": "c6503ee7-eae5-4330-a24e-0f0fe18d8543",
+      "name": "Build Intake AI Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [200, 120]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/responses",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$env.OPENAI_API_KEY}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{$json.openai_request}}",
+        "options": {}
+      },
+      "id": "7675dd10-8038-44a5-a07d-b225f94874e7",
+      "name": "OpenAI - Understand Intake",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [440, 120]
+    },
+    {
+      "parameters": {
+        "jsCode": "const n=$('Normalize Evolution Event').first().json;const raw=$('Persist Raw Field Data').first().json;const h=$('Fetch Sender History').all().map(i=>i.json).filter(i=>i.id!==raw.id);const ps=$('Fetch Active Projects').all().map(i=>i.json);const ts=$('Fetch Active Templates').all().map(i=>i.json);const r=$input.first().json;const parse=v=>{if(!v)return null;if(typeof v==='object')return v;if(typeof v!=='string')return null;try{return JSON.parse(v);}catch{return null;}};let p=parse(r.output_text);if(!p&&Array.isArray(r.output)){for(const o of r.output){for(const c of o.content||[]){p=parse(c.json??c.text??c.output_text);if(p)break;}if(p)break;}}if(!p) throw new Error('Nao foi possivel interpretar a resposta da IA no intake.');const txt=v=>typeof v==='string'&&v.trim()?v.trim():null;const imgs=[raw,...h].filter(i=>i.type==='photo'&&i.raw_content_url).map((i,x)=>({id:i.whatsapp_message_id||i.id||`img-${x+1}`,name:`whatsapp-${x+1}.jpg`,caption:i.processed_data?.intake?.caption||i.ai_extracted_text||'Imagem recebida pelo WhatsApp',added_at:i.received_at||new Date().toISOString(),source:'whatsapp',preview_url:i.raw_content_url,microsoft365_url:null}));let project=ps.find(i=>i.id===p.suggested_project_id)||null;if(!project&&p.client_name){const needle=String(p.client_name).toLowerCase();project=ps.find(i=>String(i.client_name||'').toLowerCase().includes(needle))||null;}let template=ts.find(i=>i.id===p.suggested_template_id)||null;if(!template&&p.service_type){const needle=String(p.service_type).toLowerCase();template=ts.find(i=>`${i.name} ${i.type} ${i.description||''}`.toLowerCase().includes(needle))||null;}if(!template) template=ts[0]||null;const missing=Array.isArray(p.missing_fields)?p.missing_fields.filter(i=>typeof i==='string'&&i.trim()):[];if(!project) missing.push('Projeto');if(!template) missing.push('Template do relatorio');const uniqueMissing=[...new Set(missing)];const ready=Boolean(p.ready_for_report&&project&&template&&uniqueMissing.length===0);const loc=txt(p.location_text)||txt(n.location?.label)||txt(n.text)||'Local informado no WhatsApp';const reportNumber=txt(p.report_number)||`RT-${new Date().toISOString().slice(0,10).replace(/-/g,'')}-${String(n.sender_phone).slice(-4)}`;const label=txt(p.campaign_label)||'Atendimento via WhatsApp';const tech=txt(p.responsible_technical)||txt(n.technician_name)||'Equipe Elementus';const notes=[txt(p.notes),txt(n.text),txt(n.caption)].filter(Boolean).join(' | ').slice(0,2000);const makeSections=(type)=>{const map={implantation:[['presentation','1','Apresentacao'],['general','2','Informacoes Gerais'],['activities','3','Atividades Realizadas'],['photos','4','Registro Fotografico'],['conclusion','5','Conclusao']],quarterly_monitoring:[['presentation','1','Apresentacao'],['methodology','2','Metodologia'],['results','3','Resultados e Evidencias'],['photos','4','Registro Fotografico'],['conclusion','5','Conclusao']],semester_condicionante:[['presentation','1','Apresentacao'],['condicionantes','2','Condicionantes Avaliadas'],['activities','3','Atividades e Achados'],['photos','4','Registro Fotografico'],['conclusion','5','Conclusao']],annual_consolidated:[['presentation','1','Apresentacao'],['consolidated_results','2','Resultados Consolidados'],['critical_points','3','Pontos Criticos'],['photos','4','Registro Fotografico'],['conclusion','5','Conclusao']],technical_opinion:[['presentation','1','Apresentacao'],['analysis','2','Analise Tecnica'],['opinion','3','Parecer'],['supporting_evidence','4','Evidencias'],['conclusion','5','Conclusao']]};const rows=map[type]||map.quarterly_monitoring;const imageSection=type==='technical_opinion'?'supporting_evidence':'photos';return rows.map(([id,number,title])=>({id,key:id,number,title,content:'',editable:true,edited:false,images:id===imageSection?imgs:[]}));};return[{json:{sender_phone:n.sender_phone,ready_for_report:ready,reply_text:ready?'Perfeito. Estou abrindo o rascunho do relatorio na plataforma agora.':p.reply_text,field_data_id:raw.id,field_data_patch:{status:ready?'validated':'processed',ai_extracted_text:txt(p.summary)||txt(n.text)||txt(n.caption),processed_data:{...(raw.processed_data||{}),intake:{...(raw.processed_data?.intake||{}),intent:p.intent,summary:p.summary,next_question:p.reply_text,missing_fields:uniqueMissing,report_ready:ready,suggested_project_id:project?.id||null,suggested_template_id:template?.id||null,extracted_fields:{client_name:txt(p.client_name),location_text:loc,service_type:txt(p.service_type),period:txt(p.period),report_number:reportNumber,campaign_label:label,responsible_technical:tech},attachments:imgs.map(i=>({id:i.id,name:i.name,caption:i.caption,preview_url:i.preview_url})),location:n.location||null}}},report_request_body:ready?{project_id:project.id,template_id:template.id,title:txt(p.report_title)||`${template.name} - ${project.enterprise}`,report_number:reportNumber,type:template.type,status:'draft',version:1,sections:makeSections(template.type),variables:{period:txt(p.period)||'Periodo informado pelo tecnico',campaign_label:label,responsible_technical:tech,notes,location_text:loc,latitude:n.location?.latitude||null,longitude:n.location?.longitude||null,whatsapp_sender:n.sender_phone,whatsapp_technician_name:n.technician_name,intake_source:'whatsapp'},charts:[],tables:[],metadata:{intake_summary:p.summary,intake_missing_fields:uniqueMissing,intake_field_data_ids:[raw.id,...h.map(i=>i.id)],intake_message_id:n.message_id,intake_origin:'whatsapp'}}:null,webhook_response:{ok:true,stage:ready?'opening_draft':'awaiting_data',missing_fields:uniqueMissing}}}];"
+      },
+      "id": "eb2221ad-a445-4ec5-b03f-3bd1f0994b6d",
+      "name": "Parse Intake Decision",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 120]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{$env.ELEMENTUS_API_URL}}/api/field-data/{{$json.field_data_id}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{$json.field_data_patch}}",
+        "options": {}
+      },
+      "id": "3a7f8d1a-ec28-4828-8d5b-5fdf0dd7946b",
+      "name": "Update Field Data Entry",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [920, 120]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ready-for-report",
+              "leftValue": "={{$('Parse Intake Decision').first().json.ready_for_report}}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "4541c5f4-b0c5-41c9-9db7-cb8fd661e6fa",
+      "name": "Ready For Report?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1160, 120]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.ELEMENTUS_API_URL}}/api/reports/generate",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{$('Parse Intake Decision').first().json.report_request_body}}",
+        "options": {}
+      },
+      "id": "9709ba44-af4d-4db8-9026-c679653e93db",
+      "name": "Create Draft Report",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1400, 40]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.EVOLUTION_API_URL}}/message/sendText/{{$env.EVOLUTION_INSTANCE_NAME}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{$env.EVOLUTION_API_KEY}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\"number\": $('Parse Intake Decision').first().json.sender_phone, \"text\": `Perfeito. Abri o rascunho ${$json.report_number} na plataforma. Revise o texto, encaixe as imagens e finalize aqui: ${(String($env.ELEMENTUS_DASHBOARD_URL || '').replace(/\\/$/, ''))}/relatorio?report=${$json.id}` } }}",
+        "options": {}
+      },
+      "id": "88443b2d-9fdb-4c65-b6a7-a8c1dbca0c9a",
+      "name": "Send WhatsApp Reply - Created",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1640, 40]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ {\"ok\": true, \"stage\": \"draft_opened\", \"report_id\": $json.id, \"report_number\": $json.report_number} }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "ff11a862-03e1-490a-b1a7-4640d399d40e",
+      "name": "Respond Created",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1880, 40]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.EVOLUTION_API_URL}}/message/sendText/{{$env.EVOLUTION_INSTANCE_NAME}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{$env.EVOLUTION_API_KEY}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\"number\": $('Parse Intake Decision').first().json.sender_phone, \"text\": $('Parse Intake Decision').first().json.reply_text } }}",
+        "options": {}
+      },
+      "id": "f322687f-312d-44c1-a537-e1783006ebc5",
+      "name": "Send WhatsApp Reply - Need More Data",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1400, 240]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{$('Parse Intake Decision').first().json.webhook_response}}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "d90706c3-d640-428a-bd87-51d2e65f30ff",
+      "name": "Respond Waiting Data",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1640, 240]
+    }
+  ],
+  "connections": {
+    "Webhook - Evolution Intake": {
+      "main": [[{ "node": "Normalize Evolution Event", "type": "main", "index": 0 }]]
+    },
+    "Normalize Evolution Event": {
+      "main": [[{ "node": "Should Process?", "type": "main", "index": 0 }]]
+    },
+    "Should Process?": {
+      "main": [
+        [{ "node": "Persist Raw Field Data", "type": "main", "index": 0 }],
+        [{ "node": "Respond Ignored", "type": "main", "index": 0 }]
+      ]
+    },
+    "Persist Raw Field Data": {
+      "main": [[{ "node": "Fetch Sender History", "type": "main", "index": 0 }]]
+    },
+    "Fetch Sender History": {
+      "main": [[{ "node": "Fetch Active Projects", "type": "main", "index": 0 }]]
+    },
+    "Fetch Active Projects": {
+      "main": [[{ "node": "Fetch Active Templates", "type": "main", "index": 0 }]]
+    },
+    "Fetch Active Templates": {
+      "main": [[{ "node": "Build Intake AI Request", "type": "main", "index": 0 }]]
+    },
+    "Build Intake AI Request": {
+      "main": [[{ "node": "OpenAI - Understand Intake", "type": "main", "index": 0 }]]
+    },
+    "OpenAI - Understand Intake": {
+      "main": [[{ "node": "Parse Intake Decision", "type": "main", "index": 0 }]]
+    },
+    "Parse Intake Decision": {
+      "main": [[{ "node": "Update Field Data Entry", "type": "main", "index": 0 }]]
+    },
+    "Update Field Data Entry": {
+      "main": [[{ "node": "Ready For Report?", "type": "main", "index": 0 }]]
+    },
+    "Ready For Report?": {
+      "main": [
+        [{ "node": "Create Draft Report", "type": "main", "index": 0 }],
+        [{ "node": "Send WhatsApp Reply - Need More Data", "type": "main", "index": 0 }]
+      ]
+    },
+    "Create Draft Report": {
+      "main": [[{ "node": "Send WhatsApp Reply - Created", "type": "main", "index": 0 }]]
+    },
+    "Send WhatsApp Reply - Created": {
+      "main": [[{ "node": "Respond Created", "type": "main", "index": 0 }]]
+    },
+    "Send WhatsApp Reply - Need More Data": {
+      "main": [[{ "node": "Respond Waiting Data", "type": "main", "index": 0 }]]
+    }
+  },
+  "pinData": {},
+  "active": false,
+  "settings": {},
+  "versionId": "cc0e14e8-7789-4d09-8fbb-b39eaf0950e8",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

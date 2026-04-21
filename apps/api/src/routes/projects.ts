@@ -5,10 +5,26 @@ const router: import("express").Router = Router();
 
 // GET /api/projects
 router.get("/", async (_req, res) => {
-  const { data, error } = await supabase
+  const req = _req;
+  const query = supabase
     .from("projects")
     .select("*")
     .order("updated_at", { ascending: false });
+
+  if (req.query.status) {
+    query.eq("status", req.query.status);
+  }
+
+  if (req.query.client_name) {
+    query.ilike("client_name", `%${req.query.client_name}%`);
+  }
+
+  if (req.query.search) {
+    const search = String(req.query.search).replace(/,/g, " ");
+    query.or(`name.ilike.%${search}%,client_name.ilike.%${search}%,enterprise.ilike.%${search}%`);
+  }
+
+  const { data, error } = await query;
 
   if (error) {
     res.status(500).json({ error: error.message });

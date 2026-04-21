@@ -9,7 +9,7 @@ router.get("/", async (req, res) => {
     .from("field_data")
     .select("*, campaigns(name), projects(name)")
     .order("received_at", { ascending: false })
-    .limit(50);
+    .limit(Math.min(Number(req.query.limit) || 50, 200));
 
   if (req.query.campaign_id) {
     query.eq("campaign_id", req.query.campaign_id);
@@ -19,6 +19,12 @@ router.get("/", async (req, res) => {
   }
   if (req.query.type) {
     query.eq("type", req.query.type);
+  }
+  if (req.query.sent_by) {
+    query.eq("sent_by", req.query.sent_by);
+  }
+  if (req.query.whatsapp_message_id) {
+    query.eq("whatsapp_message_id", req.query.whatsapp_message_id);
   }
 
   const { data, error } = await query;
@@ -94,6 +100,34 @@ router.post("/webhook", async (req, res) => {
     return;
   }
   res.status(201).json(data);
+});
+
+router.patch("/:id", async (req, res) => {
+  const payload = {
+    ...req.body,
+  } as Record<string, unknown>;
+
+  if (
+    payload.status === "processed" ||
+    payload.status === "validated" ||
+    payload.status === "error"
+  ) {
+    payload.processed_at = payload.processed_at || new Date().toISOString();
+  }
+
+  const { data, error } = await supabase
+    .from("field_data")
+    .update(payload)
+    .eq("id", req.params.id)
+    .select()
+    .single();
+
+  if (error) {
+    res.status(400).json({ error: error.message });
+    return;
+  }
+
+  res.json(data);
 });
 
 export default router;

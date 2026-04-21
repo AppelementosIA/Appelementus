@@ -4,11 +4,24 @@ import { supabase } from "../lib/supabase.js";
 const router: import("express").Router = Router();
 
 // GET /api/templates
-router.get("/", async (_req, res) => {
-  const { data, error } = await supabase
+router.get("/", async (req, res) => {
+  const query = supabase
     .from("report_templates")
     .select("*")
     .order("name");
+
+  if (req.query.type) {
+    query.eq("type", req.query.type);
+  }
+
+  if (req.query.active === "true") {
+    query.eq("active", true);
+  }
+  if (req.query.active === "false") {
+    query.eq("active", false);
+  }
+
+  const { data, error } = await query;
 
   if (error) {
     res.status(500).json({ error: error.message });
