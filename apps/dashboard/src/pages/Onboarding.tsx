@@ -26,7 +26,7 @@ function readFileAsDataUrl(file: File) {
 }
 
 export function OnboardingPage() {
-  const { user, getMicrosoftAccessToken, logout, setPlatformUser } = useAuth();
+  const { user, getPlatformAccessToken, logout, setPlatformUser } = useAuth();
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [professionalRole, setProfessionalRole] = useState("");
@@ -95,7 +95,7 @@ export function OnboardingPage() {
       setIsSaving(true);
       setError(null);
 
-      const accessToken = await getMicrosoftAccessToken();
+      const accessToken = await getPlatformAccessToken();
       const nextUser = await completePlatformOnboarding(accessToken, {
         name,
         phone,
@@ -132,8 +132,9 @@ export function OnboardingPage() {
               <div>
                 <h1 className="text-2xl font-bold text-elementus-blue">Primeiro acesso da Elementus</h1>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Seu login Microsoft 365 ja foi validado. Agora vamos completar o cadastro no banco
-                  da plataforma para liberar seu ambiente de trabalho.
+                  {user.provider === "microsoft365"
+                    ? "Seu login Microsoft 365 ja foi validado. Agora vamos completar o cadastro no banco da plataforma para liberar seu ambiente de trabalho."
+                    : "Seu acesso temporario por e-mail e senha ja foi validado. Agora vamos completar o cadastro no banco da plataforma para liberar seu ambiente de trabalho."}
                 </p>
                 <div className="mt-3 flex flex-wrap items-center gap-2">
                   <Badge variant="outline" className="gap-1">

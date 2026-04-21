@@ -1,32 +1,31 @@
-import { Bell, Search, User } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import type { ReactNode } from "react";
+import { Badge } from "@/components/ui/badge";
+import { useAuth } from "@/hooks/useAuth";
 
 interface HeaderProps {
   title: string;
   description?: string;
+  actions?: ReactNode;
 }
 
-export function Header({ title, description }: HeaderProps) {
-  return (
-    <header className="flex h-16 items-center justify-between border-b bg-white px-6">
-      <div>
-        <h2 className="text-lg font-semibold text-foreground">{title}</h2>
-        {description && (
-          <p className="text-sm text-muted-foreground">{description}</p>
-        )}
-      </div>
+export function Header({ title, description, actions }: HeaderProps) {
+  const { isPresentationMode } = useAuth();
 
-      <div className="flex items-center gap-2">
-        <Button variant="ghost" size="icon" className="text-muted-foreground">
-          <Search className="h-4 w-4" />
-        </Button>
-        <Button variant="ghost" size="icon" className="relative text-muted-foreground">
-          <Bell className="h-4 w-4" />
-          <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-destructive" />
-        </Button>
-        <Button variant="ghost" size="icon" className="text-muted-foreground">
-          <User className="h-4 w-4" />
-        </Button>
+  return (
+    <header className="border-b bg-white/90 px-4 py-4 backdrop-blur lg:px-6">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-foreground">{title}</h2>
+          {description && <p className="text-sm text-muted-foreground">{description}</p>}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {actions}
+          <Badge variant="outline">WhatsApp - IA - envio</Badge>
+          <Badge variant={isPresentationMode ? "info" : "success"}>
+            {isPresentationMode ? "Modo apresentacao" : "Sessao operacional"}
+          </Badge>
+        </div>
       </div>
     </header>
   );

@@ -1,24 +1,34 @@
+import type { ElementType } from "react";
 import { NavLink } from "react-router-dom";
-import { Database, FileStack, FileText, LayoutDashboard, Leaf, LogOut, Settings, Users } from "lucide-react";
+import {
+  FileText,
+  Image,
+  Inbox,
+  Leaf,
+  LogOut,
+  Send,
+  Settings,
+  Sparkles,
+  Users,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/hooks/useAuth";
 import type { UserRole } from "@elementus/shared";
+import {
+  getWorkflowStageCounts,
+  workflowStageMeta,
+  workflowStageOrder,
+  type WorkflowStage,
+} from "@/data/workflow";
 
 interface NavItem {
   name: string;
   href: string;
-  icon: React.ElementType;
+  icon: ElementType;
   minRole: UserRole;
+  count?: number;
 }
-
-const navigation: NavItem[] = [
-  { name: "Inicio", href: "/", icon: LayoutDashboard, minRole: "technician" },
-  { name: "Cadastros", href: "/projects", icon: Database, minRole: "technician" },
-  { name: "Relatorios", href: "/reports", icon: FileText, minRole: "technician" },
-  { name: "Templates", href: "/templates", icon: FileStack, minRole: "supervisor" },
-];
 
 const bottomNav: NavItem[] = [
   { name: "Usuarios", href: "/users", icon: Users, minRole: "manager" },
@@ -39,32 +49,53 @@ const roleColors: Record<UserRole, string> = {
   technician: "bg-amber-100 text-amber-800",
 };
 
+const workflowIcons: Record<WorkflowStage, ElementType> = {
+  entrada: Inbox,
+  montagem: Sparkles,
+  relatorio: FileText,
+  imagens: Image,
+  envio: Send,
+};
+
 export function SidebarPlatform() {
-  const { user, hasAccess, logout } = useAuth();
+  const { user, hasAccess, isPresentationMode, logout } = useAuth();
+  const stageCounts = getWorkflowStageCounts();
+
+  const navigation: NavItem[] = workflowStageOrder.map((stage) => ({
+    name: workflowStageMeta[stage].label,
+    href: workflowStageMeta[stage].href,
+    icon: workflowIcons[stage],
+    minRole: "technician",
+    count: stageCounts[stage],
+  }));
 
   const visibleNav = navigation.filter((item) => hasAccess(item.minRole));
   const visibleBottom = bottomNav.filter((item) => hasAccess(item.minRole));
 
   return (
-    <aside className="flex h-screen w-64 flex-col border-r bg-white">
-      <div className="flex h-16 items-center gap-2 px-6">
-        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-elementus-blue">
-          <Leaf className="h-5 w-5 text-white" />
+    <aside className="border-b bg-white lg:sticky lg:top-0 lg:flex lg:h-screen lg:w-72 lg:flex-col lg:border-b-0 lg:border-r">
+      <div className="flex items-center justify-between gap-3 px-4 py-4 lg:px-6">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-elementus-blue">
+            <Leaf className="h-5 w-5 text-white" />
+          </div>
+          <div>
+            <h1 className="text-lg font-bold text-elementus-blue">Elementus</h1>
+            <p className="text-[11px] leading-none text-muted-foreground">
+              Estacao operacional de relatorios
+            </p>
+          </div>
         </div>
-        <div>
-          <h1 className="text-lg font-bold text-elementus-blue">Elementus</h1>
-          <p className="text-[10px] leading-none text-muted-foreground">
-            Plataforma de Relatorios
-          </p>
-        </div>
+
+        <Badge variant={isPresentationMode ? "info" : "outline"}>
+          {isPresentationMode ? "Demo" : "Producao"}
+        </Badge>
       </div>
 
-      <Separator />
-
       {user ? (
-        <div className="px-4 py-3">
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-elementus-blue/10 text-sm font-bold text-elementus-blue">
+        <div className="px-4 pb-4 lg:px-6">
+          <div className="flex items-center gap-3 rounded-2xl bg-muted/40 p-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-elementus-blue/10 text-sm font-bold text-elementus-blue">
               {user.name
                 .split(" ")
                 .map((name) => name[0])
@@ -73,47 +104,69 @@ export function SidebarPlatform() {
             </div>
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium">{user.name}</p>
-              <Badge className={cn("px-1.5 py-0 text-[10px]", roleColors[user.role])}>
-                {roleLabels[user.role]}
-              </Badge>
+              <div className="mt-1 flex flex-wrap gap-2">
+                <Badge className={cn("px-1.5 py-0 text-[10px]", roleColors[user.role])}>
+                  {roleLabels[user.role]}
+                </Badge>
+                {isPresentationMode ? <Badge variant="info">Sem login Microsoft</Badge> : null}
+              </div>
             </div>
           </div>
         </div>
       ) : null}
 
-      <Separator />
-
-      <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
+      <nav className="flex gap-2 overflow-x-auto px-4 pb-4 lg:flex-1 lg:flex-col lg:overflow-y-auto lg:px-3">
         {visibleNav.map((item) => (
           <NavLink
             key={item.href}
             to={item.href}
-            end={item.href === "/"}
             className={({ isActive }) =>
               cn(
-                "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                "min-w-44 rounded-2xl border px-4 py-3 text-sm font-medium transition-colors lg:min-w-0",
                 isActive
-                  ? "bg-elementus-blue/10 text-elementus-blue"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  ? "border-elementus-blue bg-elementus-blue/10 text-elementus-blue"
+                  : "border-transparent text-muted-foreground hover:bg-muted hover:text-foreground"
               )
             }
           >
-            <item.icon className="h-4 w-4" />
-            {item.name}
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <item.icon className="h-4 w-4" />
+                <span>{item.name}</span>
+              </div>
+              <Badge variant="outline">{item.count ?? 0}</Badge>
+            </div>
+            <p className="mt-2 text-xs font-normal leading-relaxed text-muted-foreground">
+              {workflowStageMeta[
+                workflowStageOrder.find((stage) => workflowStageMeta[stage].href === item.href) ?? "entrada"
+              ].description}
+            </p>
           </NavLink>
         ))}
       </nav>
 
-      <Separator />
+      <div className="hidden px-4 pb-4 lg:block">
+        <div className="rounded-2xl border bg-muted/30 p-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+            Foco da fase
+          </p>
+          <p className="mt-2 text-sm font-medium">
+            WhatsApp - montagem - IA - imagens - envio
+          </p>
+          <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+            A plataforma agora acompanha atendimento vivo em vez de esconder o fluxo em menus separados.
+          </p>
+        </div>
+      </div>
 
-      <div className="space-y-1 px-3 py-3">
+      <div className="flex gap-2 overflow-x-auto border-t px-4 py-4 lg:block lg:space-y-1 lg:border-t lg:px-3">
         {visibleBottom.map((item) => (
           <NavLink
             key={item.href}
             to={item.href}
             className={({ isActive }) =>
               cn(
-                "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                "flex min-w-max items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-colors",
                 isActive
                   ? "bg-elementus-blue/10 text-elementus-blue"
                   : "text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -126,7 +179,7 @@ export function SidebarPlatform() {
         ))}
         <button
           onClick={logout}
-          className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          className="flex min-w-max items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         >
           <LogOut className="h-4 w-4" />
           Sair

@@ -13,3 +13,13 @@ const supabaseAnonKey =
   "your-anon-key";
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+export function isSupabaseConfigured() {
+  return (
+    Boolean(supabaseUrl) &&
+    Boolean(supabaseAnonKey) &&
+    !supabaseUrl.includes("seu-projeto") &&
+    !supabaseAnonKey.includes("your-anon-key") &&
+    !supabaseAnonKey.includes("sua-publishable-key")
+  );
+}

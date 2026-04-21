@@ -69,7 +69,7 @@ function buildEditableUser(user: PlatformUser): EditableUser {
 }
 
 export function UsersPlatformPage() {
-  const { getMicrosoftAccessToken, hasAccess } = useAuth();
+  const { getPlatformAccessToken, hasAccess } = useAuth();
   const [users, setUsers] = useState<PlatformUser[]>([]);
   const [search, setSearch] = useState("");
   const [isLoading, setIsLoading] = useState(true);
@@ -79,10 +79,10 @@ export function UsersPlatformPage() {
   const [isSaving, setIsSaving] = useState(false);
 
   const loadUsers = async () => {
-    try {
+      try {
       setIsLoading(true);
       setError(null);
-      const accessToken = await getMicrosoftAccessToken();
+      const accessToken = await getPlatformAccessToken();
       const nextUsers = await fetchPlatformUsers(accessToken);
       setUsers(nextUsers);
     } catch (nextError) {
@@ -148,7 +148,7 @@ export function UsersPlatformPage() {
     try {
       setIsSaving(true);
       setError(null);
-      const accessToken = await getMicrosoftAccessToken();
+      const accessToken = await getPlatformAccessToken();
       const updated = await updatePlatformUser(accessToken, selectedUser.id, {
         role: form.role,
         active: form.active,
@@ -226,7 +226,7 @@ export function UsersPlatformPage() {
     <div>
       <Header
         title="Usuarios"
-        description="Equipe sincronizada pelo Microsoft 365, com onboarding e assinatura tecnica controlados pelo banco"
+        description="Equipe sincronizada por Microsoft ou acesso temporario por senha, com onboarding e assinatura tecnica controlados pelo banco"
       />
 
       <div className="space-y-6 p-6">
@@ -249,7 +249,7 @@ export function UsersPlatformPage() {
           </CardHeader>
           <CardContent className="grid gap-2 text-sm text-muted-foreground md:grid-cols-3">
             <div className="rounded-xl border p-3">
-              O colaborador entra com a propria conta Microsoft 365.
+              O colaborador entra com Microsoft 365 ou com acesso temporario por senha.
             </div>
             <div className="rounded-xl border p-3">
               No primeiro acesso, a plataforma cria ou sincroniza o cadastro automaticamente.

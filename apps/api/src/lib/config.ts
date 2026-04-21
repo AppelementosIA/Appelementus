@@ -2,11 +2,24 @@ import { loadAppEnvironment } from "./env.js";
 
 loadAppEnvironment();
 
+function parseEnvList(value?: string) {
+  return (value ?? "")
+    .split(",")
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean);
+}
+
 export const config = {
   port: parseInt(process.env.PORT || process.env.API_PORT || "3001", 10),
   supabase: {
     url: process.env.SUPABASE_URL || "",
     serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || "",
+  },
+  passwordAuth: {
+    enabled: process.env.PASSWORD_AUTH_ENABLED !== "false",
+    allowedDomains: parseEnvList(
+      process.env.PASSWORD_AUTH_ALLOWED_DOMAINS || "elementus-sa.com.br"
+    ),
   },
   openai: {
     apiKey: process.env.OPENAI_API_KEY || "",

@@ -6,6 +6,7 @@ import type {
   UserRole,
 } from "@elementus/shared";
 import { Router } from "express";
+import { config } from "../lib/config.js";
 import { fetchMicrosoftGraphUserProfile } from "../lib/microsoft-graph.js";
 import { supabase } from "../lib/supabase.js";
 
@@ -83,9 +84,10 @@ type RawPlatformUserRow = {
 };
 
 type Requester = {
-  profile: Awaited<ReturnType<typeof fetchMicrosoftGraphUserProfile>>;
+  provider: "microsoft365" | "password";
   accessToken: string;
   user: PlatformUser;
+  profile?: Awaited<ReturnType<typeof fetchMicrosoftGraphUserProfile>>;
 };
 
 function getBearerToken(authHeader?: string) {
@@ -223,11 +225,121 @@ async function ensureUserProfile(userId: string) {
   }
 }
 
+async function resolveSupabasePasswordSession(accessToken: string) {
+  const { data, error } = await supabase.auth.getUser(accessToken);
+
+  if (error || !data.user?.id || !data.user.email) {
+    return null;
+  }
+
+  return {
+    id: data.user.id,
+    email: data.user.email.toLowerCase(),
+    name: getPasswordDisplayName({
+      name:
+        sanitizeOptionalText(data.user.user_metadata?.full_name) ||
+        sanitizeOptionalText(data.user.user_metadata?.name),
+      email: data.user.email.toLowerCase(),
+    }),
+  };
+}
+
+async function upsertPasswordPlatformUser(input: {
+  authUserId: string;
+  email: string;
+  name: string;
+}) {
+  const now = new Date().toISOString();
+  const existing = await fetchUserByEmail(input.email);
+
+  if (existing) {
+    const nextEntraOid = existing.entra_oid.startsWith("password:")
+      ? buildPasswordEntraOid(input.authUserId)
+      : existing.entra_oid;
+
+    const { error } = await supabase
+      .from("platform_users")
+      .update({
+        entra_oid: nextEntraOid,
+        email: input.email,
+        name: input.name || existing.name,
+        tenant_id: existing.tenant_id || "password",
+        last_login_at: now,
+        updated_at: now,
+      })
+      .eq("id", existing.id);
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    await ensureUserProfile(existing.id);
+
+    const nextUser = await fetchUserById(existing.id);
+
+    if (!nextUser) {
+      throw new Error("Nao foi possivel carregar o usuario de acesso por senha.");
+    }
+
+    return mapPlatformUser(nextUser);
+  }
+
+  const { data: created, error: insertError } = await supabase
+    .from("platform_users")
+    .insert({
+      entra_oid: buildPasswordEntraOid(input.authUserId),
+      email: input.email,
+      name: input.name,
+      tenant_id: "password",
+      app_role: "technician",
+      onboarding_status: "pending_profile",
+      is_active: true,
+      last_login_at: now,
+    })
+    .select(userSelect)
+    .single();
+
+  if (insertError) {
+    throw new Error(insertError.message);
+  }
+
+  await ensureUserProfile(created.id);
+  const nextUser = await fetchUserById(created.id);
+
+  if (!nextUser) {
+    throw new Error("Nao foi possivel carregar o usuario recem-criado para acesso por senha.");
+  }
+
+  return mapPlatformUser(nextUser);
+}
+
 async function getRequester(req: import("express").Request) {
   const accessToken = getBearerToken(req.headers.authorization);
 
   if (!accessToken) {
-    throw new Error("Sessao Microsoft 365 obrigatoria.");
+    throw new Error("Sessao autenticada obrigatoria.");
+  }
+
+  const passwordSession = await resolveSupabasePasswordSession(accessToken);
+
+  if (passwordSession) {
+    const userRow = await fetchUserByEmail(passwordSession.email);
+
+    if (!userRow) {
+      throw new Error("Usuario ainda nao sincronizado com a plataforma.");
+    }
+
+    const user = mapPlatformUser(userRow);
+
+    if (!user.active) {
+      throw new Error("Seu acesso na plataforma esta inativo.");
+    }
+
+    return {
+      provider: "password",
+      accessToken,
+      user,
+    } satisfies Requester;
   }
 
   const profile = await fetchMicrosoftGraphUserProfile(accessToken);
@@ -244,6 +356,7 @@ async function getRequester(req: import("express").Request) {
   }
 
   return {
+    provider: "microsoft365",
     profile,
     accessToken,
     user,
@@ -299,6 +412,37 @@ function sanitizeOptionalText(value: unknown) {
 
   const normalized = value.trim();
   return normalized ? normalized : null;
+}
+
+function sanitizeEmail(value: unknown) {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  return normalized ? normalized : null;
+}
+
+function buildPasswordEntraOid(authUserId: string) {
+  return `password:${authUserId}`;
+}
+
+function getPasswordDisplayName(input: { name?: string | null; email: string }) {
+  const normalized = sanitizeOptionalText(input.name);
+
+  if (normalized) {
+    return normalized;
+  }
+
+  return input.email.split("@")[0];
+}
+
+function isAllowedPasswordAuthEmail(email: string) {
+  if (config.passwordAuth.allowedDomains.length === 0) {
+    return true;
+  }
+
+  return config.passwordAuth.allowedDomains.some((domain) => email.endsWith(`@${domain}`));
 }
 
 function sanitizeDataUrl(value: unknown) {
@@ -389,6 +533,125 @@ async function syncPlatformUser(input: {
 
   return mapPlatformUser(nextUser);
 }
+
+async function syncPasswordPlatformUser(input: { accessToken: string }) {
+  if (!config.passwordAuth.enabled) {
+    throw new Error("O acesso por e-mail e senha esta desativado neste ambiente.");
+  }
+
+  const authSession = await resolveSupabasePasswordSession(input.accessToken);
+
+  if (!authSession) {
+    throw new Error("Sessao por e-mail e senha invalida ou expirada.");
+  }
+
+  return upsertPasswordPlatformUser({
+    authUserId: authSession.id,
+    email: authSession.email,
+    name: authSession.name,
+  });
+}
+
+async function registerPasswordPlatformUser(input: {
+  name?: string | null;
+  email: string;
+  password: string;
+}) {
+  if (!config.passwordAuth.enabled) {
+    throw new Error("O acesso por e-mail e senha esta desativado neste ambiente.");
+  }
+
+  if (!isAllowedPasswordAuthEmail(input.email)) {
+    throw new Error("Use um e-mail corporativo autorizado para criar o acesso temporario.");
+  }
+
+  if (input.password.length < 8) {
+    throw new Error("A senha precisa ter pelo menos 8 caracteres.");
+  }
+
+  const displayName = getPasswordDisplayName({
+    name: input.name,
+    email: input.email,
+  });
+
+  const { data, error } = await supabase.auth.admin.createUser({
+    email: input.email,
+    password: input.password,
+    email_confirm: true,
+    user_metadata: {
+      full_name: displayName,
+      source: "elementus-password-access",
+    },
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  if (!data.user?.id) {
+    throw new Error("Nao foi possivel criar o usuario de acesso por senha.");
+  }
+
+  return upsertPasswordPlatformUser({
+    authUserId: data.user.id,
+    email: input.email,
+    name: displayName,
+  });
+}
+
+router.post("/session/password/register", async (req, res) => {
+  const email = sanitizeEmail(req.body.email);
+  const password = typeof req.body.password === "string" ? req.body.password : "";
+  const name = sanitizeOptionalText(req.body.name);
+
+  if (!name || !email || !password) {
+    res.status(400).json({ error: "Informe nome, e-mail e senha para criar o acesso temporario." });
+    return;
+  }
+
+  try {
+    const user = await registerPasswordPlatformUser({
+      name,
+      email,
+      password,
+    });
+
+    res.status(201).json(user);
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Nao foi possivel criar o acesso por e-mail e senha.";
+
+    res.status(message.toLowerCase().includes("already") ? 409 : 400).json({
+      error: message,
+    });
+  }
+});
+
+router.post("/session/password/sync", async (req, res) => {
+  const accessToken = typeof req.body.access_token === "string" ? req.body.access_token : "";
+
+  if (!accessToken) {
+    res.status(400).json({ error: "Token da sessao por senha obrigatorio." });
+    return;
+  }
+
+  try {
+    const user = await syncPasswordPlatformUser({
+      accessToken,
+    });
+
+    res.json(user);
+  } catch (error) {
+    res.status(401).json({
+      error:
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel sincronizar a sessao por e-mail e senha.",
+    });
+  }
+});
 
 router.post("/session/sync", async (req, res) => {
   const accessToken = req.body.microsoft_access_token as string | undefined;

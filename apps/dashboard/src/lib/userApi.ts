@@ -45,6 +45,36 @@ export async function syncPlatformSession(input: {
   });
 }
 
+export async function syncPasswordPlatformSession(accessToken: string) {
+  return requestJson<PlatformUser>("/users/session/password/sync", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      access_token: accessToken,
+    }),
+  });
+}
+
+export async function registerPasswordPlatformAccess(input: {
+  name: string;
+  email: string;
+  password: string;
+}) {
+  return requestJson<PlatformUser>("/users/session/password/register", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      name: input.name,
+      email: input.email,
+      password: input.password,
+    }),
+  });
+}
+
 export async function fetchCurrentPlatformUser(accessToken: string) {
   return requestJson<PlatformUser>("/users/me", {
     headers: authHeaders(accessToken),

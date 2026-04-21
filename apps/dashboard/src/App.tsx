@@ -1,18 +1,21 @@
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes, useParams } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { DashboardLayout } from "@/components/layout";
-import { DashboardPlatformPage } from "@/pages/DashboardPlatform";
-import { ProjectsPage } from "@/pages/Projects";
-import { FieldDataPage } from "@/pages/FieldData";
-import { ReportsPlatformPage } from "@/pages/ReportsPlatform";
-import { ReportGeneratePlatformPage } from "@/pages/ReportGeneratePlatform";
-import { ReportReviewPlatformPage } from "@/pages/ReportReviewPlatform";
-import { DataValidationPage } from "@/pages/DataValidation";
-import { TemplatesPage } from "@/pages/Templates";
+import { IntakePlatformPage } from "@/pages/IntakePlatform";
+import { AssemblyPlatformPage } from "@/pages/AssemblyPlatform";
+import { ReportWorkspacePlatformPage } from "@/pages/ReportWorkspacePlatform";
+import { ImagesPlatformPage } from "@/pages/ImagesPlatform";
+import { DeliveryPlatformPage } from "@/pages/DeliveryPlatform";
 import { SettingsPlatformPage } from "@/pages/SettingsPlatform";
 import { UsersPlatformPage } from "@/pages/UsersPlatform";
-import { LoginPage } from "@/pages/Login";
+import { LoginPage } from "@/pages/LoginAccess";
 import { OnboardingPage } from "@/pages/Onboarding";
+
+function LegacyReportRedirect() {
+  const params = useParams();
+
+  return <Navigate to={`/relatorio?report=${params.id ?? ""}`} replace />;
+}
 
 function AppRoutes() {
   const { user, isLoading } = useAuth();
@@ -24,7 +27,7 @@ function AppRoutes() {
         <div className="max-w-sm text-center">
           <h1 className="text-xl font-semibold text-elementus-blue">Conectando a plataforma</h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            Estamos validando sua sessao Microsoft 365 para abrir o ambiente da Elementus.
+            Estamos validando sua sessao da plataforma para abrir o ambiente da Elementus.
           </p>
         </div>
       </div>
@@ -35,7 +38,9 @@ function AppRoutes() {
     <Routes>
       <Route
         path="/login"
-        element={user ? <Navigate to={needsOnboarding ? "/onboarding" : "/"} replace /> : <LoginPage />}
+        element={
+          user ? <Navigate to={needsOnboarding ? "/onboarding" : "/entrada"} replace /> : <LoginPage />
+        }
       />
       <Route
         path="/onboarding"
@@ -55,21 +60,31 @@ function AppRoutes() {
           )
         }
       >
-        <Route path="/" element={<DashboardPlatformPage />} />
-        <Route path="/projects" element={<ProjectsPage />} />
-        <Route path="/field-data" element={<FieldDataPage />} />
-        <Route path="/reports" element={<ReportsPlatformPage />} />
-        <Route path="/reports/generate" element={<ReportGeneratePlatformPage />} />
-        <Route path="/reports/:id" element={<ReportReviewPlatformPage />} />
-        <Route path="/validation" element={<DataValidationPage />} />
-        <Route path="/templates" element={<TemplatesPage />} />
+        <Route path="/" element={<Navigate to="/entrada" replace />} />
+        <Route path="/entrada" element={<IntakePlatformPage />} />
+        <Route path="/montagem" element={<AssemblyPlatformPage />} />
+        <Route path="/relatorio" element={<ReportWorkspacePlatformPage />} />
+        <Route path="/imagens" element={<ImagesPlatformPage />} />
+        <Route path="/envio" element={<DeliveryPlatformPage />} />
+        <Route path="/projects" element={<Navigate to="/entrada" replace />} />
+        <Route path="/field-data" element={<Navigate to="/montagem" replace />} />
+        <Route path="/reports" element={<Navigate to="/relatorio" replace />} />
+        <Route path="/reports/generate" element={<Navigate to="/montagem" replace />} />
+        <Route path="/reports/:id" element={<LegacyReportRedirect />} />
+        <Route path="/validation" element={<Navigate to="/entrada" replace />} />
+        <Route path="/templates" element={<Navigate to="/relatorio" replace />} />
         <Route path="/users" element={<UsersPlatformPage />} />
         <Route path="/settings" element={<SettingsPlatformPage />} />
       </Route>
 
       <Route
         path="*"
-        element={<Navigate to={user ? (needsOnboarding ? "/onboarding" : "/") : "/login"} replace />}
+        element={
+          <Navigate
+            to={user ? (needsOnboarding ? "/onboarding" : "/entrada") : "/login"}
+            replace
+          />
+        }
       />
     </Routes>
   );
