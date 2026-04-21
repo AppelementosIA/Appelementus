@@ -1,0 +1,78 @@
+{
+  "event": "report.generate.requested",
+  "source": "elementus-api",
+  "report_id": "0f2fa942-9a7f-4aab-8e58-9f27e090bd47",
+  "project_id": "project-caern-jaguaribe",
+  "campaign_id": null,
+  "template_id": "template-implantacao",
+  "report_number": "RT-812/2026",
+  "title": "Relatorio de Implantacao - ETE Jaguaribe",
+  "type": "implantation",
+  "status": "draft",
+  "requested_at": "2026-04-21T21:10:00.000Z",
+  "generated_data": {
+    "variables": {
+      "period": "Abril de 2026",
+      "campaign_label": "Implantacao - Etapa 2",
+      "responsible_technical": "Eng. Pedro Almeida - CREA 123456/D",
+      "notes": "Destacar o setor leste e o cronograma de plantio.",
+      "microsoft365_folder": "Clientes/CAERN/ETE Jaguaribe/Relatorios",
+      "microsoft365_status": "pending"
+    },
+    "sections": [
+      {
+        "id": "presentation",
+        "key": "presentation",
+        "number": "1",
+        "title": "Apresentacao",
+        "content": "",
+        "editable": true,
+        "edited": false,
+        "images": []
+      },
+      {
+        "id": "general",
+        "key": "general",
+        "number": "2",
+        "title": "Informacoes Gerais",
+        "content": "",
+        "editable": true,
+        "edited": false,
+        "images": []
+      },
+      {
+        "id": "activities",
+        "key": "activities",
+        "number": "3",
+        "title": "Atividades Realizadas",
+        "content": "",
+        "editable": true,
+        "edited": false,
+        "images": []
+      },
+      {
+        "id": "photos",
+        "key": "photos",
+        "number": "4",
+        "title": "Registro Fotografico",
+        "content": "",
+        "editable": true,
+        "edited": false,
+        "images": []
+      },
+      {
+        "id": "conclusion",
+        "key": "conclusion",
+        "number": "5",
+        "title": "Conclusao",
+        "content": "",
+        "editable": true,
+        "edited": false,
+        "images": []
+      }
+    ],
+    "charts": [],
+    "tables": [],
+    "metadata": {}
+  }
+}

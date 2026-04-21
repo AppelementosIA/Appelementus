@@ -6,6 +6,7 @@ import {
   extractReportAttachments,
   type ReportDocumentSource,
 } from "../lib/report-documents.js";
+import { triggerReportGenerationWorkflow } from "../lib/n8n.js";
 import { ensureMicrosoftFolder, uploadFileToMicrosoftFolder } from "../lib/microsoft-graph.js";
 import { supabase } from "../lib/supabase.js";
 
@@ -137,6 +138,14 @@ router.post("/generate", async (req, res) => {
     tables,
     metadata,
   } = req.body;
+  const generatedData = buildGeneratedData({
+    variables,
+    sections,
+    charts,
+    tables,
+    metadata,
+  });
+  const requestedAt = new Date().toISOString();
 
   const { data: report, error } = await supabase
     .from("reports")
@@ -149,13 +158,7 @@ router.post("/generate", async (req, res) => {
       report_number: report_number || variables?.report_number || "",
       type: type || variables?.type || "quarterly_monitoring",
       version: version || 1,
-      generated_data: buildGeneratedData({
-        variables,
-        sections,
-        charts,
-        tables,
-        metadata,
-      }),
+      generated_data: generatedData,
     })
     .select(reportSelect)
     .single();
@@ -163,6 +166,53 @@ router.post("/generate", async (req, res) => {
   if (error) {
     res.status(400).json({ error: error.message });
     return;
+  }
+
+  const workflowResult = await triggerReportGenerationWorkflow({
+    reportId: report.id,
+    projectId: report.project_id,
+    campaignId: report.campaign_id,
+    templateId: report.template_id,
+    reportNumber: report.report_number,
+    title: report.title,
+    type: report.type,
+    status: report.status,
+    generatedData,
+    requestedAt,
+  });
+
+  const nextGeneratedData = mergeGeneratedData(report.generated_data, {
+    metadata: {
+      n8n_generation_requested_at: requestedAt,
+      n8n_generation_triggered: workflowResult.ok,
+      n8n_generation_error: workflowResult.ok ? null : workflowResult.reason || null,
+    },
+  });
+
+  if (workflowResult.ok) {
+    const { data: queuedReport, error: queueError } = await supabase
+      .from("reports")
+      .update({
+        status: "generating",
+        generated_data: nextGeneratedData,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", report.id)
+      .select(reportSelect)
+      .single();
+
+    if (!queueError && queuedReport) {
+      res.status(201).json(queuedReport);
+      return;
+    }
+  } else {
+    await supabase
+      .from("reports")
+      .update({
+        generated_data: nextGeneratedData,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", report.id);
   }
 
   res.status(201).json(report);

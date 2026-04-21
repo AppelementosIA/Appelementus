@@ -1,0 +1,43 @@
+{
+  "status": "review",
+  "generated_data": {
+    "sections": [
+      {
+        "id": "presentation",
+        "key": "presentation",
+        "number": "1",
+        "title": "Apresentacao",
+        "content": "Este relatorio apresenta a execucao das atividades referentes ao projeto de reposicao florestal desenvolvido no empreendimento ETE Jaguaribe, para o cliente CAERN, com base nas informacoes consolidadas pela plataforma Elementus.",
+        "editable": true,
+        "edited": false,
+        "images": []
+      },
+      {
+        "id": "general",
+        "key": "general",
+        "number": "2",
+        "title": "Informacoes Gerais",
+        "content": "O periodo de referencia corresponde a Abril de 2026. A responsabilidade tecnica principal desta minuta esta vinculada a Eng. Pedro Almeida - CREA 123456/D.",
+        "editable": true,
+        "edited": false,
+        "images": []
+      }
+    ],
+    "charts": [],
+    "tables": [],
+    "variables": {
+      "period": "Abril de 2026",
+      "campaign_label": "Implantacao - Etapa 2",
+      "responsible_technical": "Eng. Pedro Almeida - CREA 123456/D",
+      "notes": "Destacar o setor leste e o cronograma de plantio.",
+      "microsoft365_folder": "Clientes/CAERN/ETE Jaguaribe/Relatorios",
+      "microsoft365_status": "pending"
+    },
+    "metadata": {
+      "ai_provider": "openai",
+      "ai_workflow": "n8n",
+      "ai_generated_at": "2026-04-21T21:12:00.000Z",
+      "ai_model": "configurado-no-n8n"
+    }
+  }
+}
