@@ -1,0 +1,214 @@
+{
+  "name": "Elementus - Report Generation",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "elementus-report-generation",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "0c9c7d2e-b79b-4e53-8e08-7cf2a0c7ea14",
+      "name": "Webhook - Report Generation",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -1120,
+        200
+      ],
+      "webhookId": "elementus-report-generation"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{$env.ELEMENTUS_API_URL}}/api/reports/{{$json.body.report_id}}",
+        "options": {}
+      },
+      "id": "aab4fd13-20f2-4742-bdda-b6fc1ab70327",
+      "name": "Get Report",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -880,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const report = $input.first().json;\nconst variables = report.generated_data?.variables ?? {};\nconst existingSections = report.generated_data?.sections ?? [];\nconst existingMetadata = report.generated_data?.metadata ?? {};\nconst sections = existingSections.map((section, index) => ({\n  id: section.id || section.key || `section-${index + 1}`,\n  key: section.key || section.id || `section-${index + 1}`,\n  number: section.number || String(index + 1),\n  title: section.title,\n}));\nconst schema = {\n  type: 'object',\n  additionalProperties: false,\n  required: ['title', 'summary', 'sections', 'missing_points', 'image_suggestions'],\n  properties: {\n    title: { type: 'string' },\n    summary: { type: 'string' },\n    sections: {\n      type: 'array',\n      items: {\n        type: 'object',\n        additionalProperties: false,\n        required: ['id', 'number', 'title', 'content'],\n        properties: {\n          id: { type: 'string' },\n          number: { type: 'string' },\n          title: { type: 'string' },\n          content: { type: 'string' }\n        }\n      }\n    },\n    missing_points: {\n      type: 'array',\n      items: { type: 'string' }\n    },\n    image_suggestions: {\n      type: 'array',\n      items: {\n        type: 'object',\n        additionalProperties: false,\n        required: ['section_id', 'caption', 'reason'],\n        properties: {\n          section_id: { type: 'string' },\n          caption: { type: 'string' },\n          reason: { type: 'string' }\n        }\n      }\n    }\n  }\n};\nconst promptContext = {\n  report_id: report.id,\n  title: report.title,\n  report_number: report.report_number,\n  report_type: report.type,\n  project: report.projects ?? null,\n  template: report.report_templates ?? null,\n  variables,\n  sections,\n};\nconst userPrompt = [\n  'DADOS DO RELATORIO',\n  JSON.stringify(promptContext, null, 2),\n  '',\n  'REGRAS DE REDACAO',\n  '- Escreva em portugues do Brasil.',\n  '- Monte uma primeira minuta tecnica para revisao humana.',\n  '- Nao invente datas, numeros, nomes, resultados ou evidencias.',\n  '- Se alguma informacao estiver faltando, deixe isso explicito de maneira profissional.',\n  '- Mantenha o texto claro, enxuto e pronto para ser editado pelo tecnico.',\n  '- Preencha todas as secoes recebidas, respeitando id, numero e titulo.',\n  '- Retorne estritamente no schema solicitado.'\n].join('\\n');\nreturn [\n  {\n    json: {\n      report_id: report.id,\n      report_title: report.title,\n      existing_variables: variables,\n      existing_sections: existingSections,\n      existing_metadata: existingMetadata,\n      openai_request: {\n        model: process.env.OPENAI_MODEL || 'gpt-4.1-mini',\n        input: [\n          {\n            role: 'system',\n            content: [\n              {\n                type: 'input_text',\n                text: 'Voce escreve minutas tecnicas da Elementus em portugues do Brasil. Organize relatos de campo em linguagem tecnica clara, objetiva e pronta para revisao humana. Nao invente medições, datas, nomes ou resultados que nao estejam no contexto. Se alguma informacao estiver incompleta, explicite a lacuna no texto de forma profissional. Responda estritamente no schema solicitado.'\n              }\n            ]\n          },\n          {\n            role: 'user',\n            content: [\n              {\n                type: 'input_text',\n                text: userPrompt\n              }\n            ]\n          }\n        ],\n        text: {\n          format: {\n            type: 'json_schema',\n            name: 'elementus_report_generation',\n            schema,\n            strict: true\n          }\n        }\n      }\n    }\n  }\n];"
+      },
+      "id": "c5b5ca54-2388-448c-b35e-a9e6cf53cf86",
+      "name": "Build AI Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -640,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/responses",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$env.OPENAI_API_KEY}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{$json.openai_request}}",
+        "options": {}
+      },
+      "id": "f8b8b8af-93ff-4544-a447-c619c4665337",
+      "name": "OpenAI - Generate Draft",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -400,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const aiResponse = $input.first().json;\nconst requestContext = $('Build AI Request').first().json;\nconst reportFromApi = $('Get Report').first().json;\nfunction tryParse(value) {\n  if (!value) return null;\n  if (typeof value === 'object') return value;\n  if (typeof value !== 'string') return null;\n  try {\n    return JSON.parse(value);\n  } catch {\n    return null;\n  }\n}\nlet parsed = tryParse(aiResponse.output_text);\nif (!parsed && Array.isArray(aiResponse.output)) {\n  for (const outputItem of aiResponse.output) {\n    for (const contentItem of outputItem.content || []) {\n      parsed = tryParse(contentItem.json ?? contentItem.text ?? contentItem.output_text);\n      if (parsed) break;\n    }\n    if (parsed) break;\n  }\n}\nif (!parsed) {\n  throw new Error('Nao foi possivel interpretar a resposta estruturada da OpenAI.');\n}\nconst previousSections = requestContext.existing_sections || [];\nconst sections = (parsed.sections || []).map((section, index) => {\n  const previous = previousSections.find((item) => (item.id || item.key) === section.id);\n  return {\n    id: section.id,\n    key: section.id,\n    number: section.number || String(index + 1),\n    title: section.title,\n    content: section.content,\n    editable: true,\n    edited: false,\n    images: previous?.images || [],\n  };\n});\nreturn [\n  {\n    json: {\n      report_id: requestContext.report_id,\n      webhook_response: {\n        ok: true,\n        report_id: requestContext.report_id,\n        status: 'review'\n      },\n      patch_body: {\n        title: parsed.title || requestContext.report_title || reportFromApi.title,\n        status: 'review',\n        generated_data: {\n          sections,\n          charts: [],\n          tables: [],\n          variables: requestContext.existing_variables || {},\n          metadata: {\n            ...(requestContext.existing_metadata || {}),\n            ai_provider: 'openai',\n            ai_workflow: 'n8n',\n            ai_generated_at: new Date().toISOString(),\n            ai_model: process.env.OPENAI_MODEL || 'gpt-4.1-mini',\n            ai_summary: parsed.summary || '',\n            ai_missing_points: parsed.missing_points || [],\n            ai_image_suggestions: parsed.image_suggestions || [],\n            n8n_generation_triggered: true,\n            n8n_processed_at: new Date().toISOString()\n          }\n        }\n      }\n    }\n  }\n];"
+      },
+      "id": "6db0e7ff-1738-46d0-84ce-779c1fa36fb0",
+      "name": "Build Report Patch",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -160,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{$env.ELEMENTUS_API_URL}}/api/reports/{{$json.report_id}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{$json.patch_body}}",
+        "options": {}
+      },
+      "id": "3be7c70f-fd0b-4c58-9fd6-3aa59d5b0242",
+      "name": "Update Report",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        80,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{$json.webhook_response}}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "30c57418-51f4-4758-9939-76dde39d5bb1",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        320,
+        200
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook - Report Generation": {
+      "main": [
+        [
+          {
+            "node": "Get Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Report": {
+      "main": [
+        [
+          {
+            "node": "Build AI Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build AI Request": {
+      "main": [
+        [
+          {
+            "node": "OpenAI - Generate Draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI - Generate Draft": {
+      "main": [
+        [
+          {
+            "node": "Build Report Patch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Report Patch": {
+      "main": [
+        [
+          {
+            "node": "Update Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Report": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "active": false,
+  "settings": {},
+  "versionId": "44e66df2-c5d6-49ee-b14d-acb7bf990c6f",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}
