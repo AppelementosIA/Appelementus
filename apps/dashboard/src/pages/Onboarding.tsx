@@ -70,6 +70,8 @@ export function OnboardingPage() {
   }
 
   const isBlocked = user.onboarding_status === "blocked";
+  const accessLabel =
+    user.provider === "microsoft365" ? "Microsoft 365" : "e-mail e senha";
 
   const handleSignatureUpload = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -132,15 +134,15 @@ export function OnboardingPage() {
               <div>
                 <h1 className="text-2xl font-bold text-elementus-blue">Primeiro acesso da Elementus</h1>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  {user.provider === "microsoft365"
-                    ? "Seu login Microsoft 365 ja foi validado. Agora vamos completar o cadastro no banco da plataforma para liberar seu ambiente de trabalho."
-                    : "Seu acesso temporario por e-mail e senha ja foi validado. Agora vamos completar o cadastro no banco da plataforma para liberar seu ambiente de trabalho."}
+                  Seu acesso via {accessLabel} ja foi validado. Agora vamos completar o cadastro
+                  central do profissional para liberar seu ambiente de trabalho.
                 </p>
                 <div className="mt-3 flex flex-wrap items-center gap-2">
                   <Badge variant="outline" className="gap-1">
                     <BriefcaseBusiness className="h-3 w-3" />
                     {user.email}
                   </Badge>
+                  <Badge variant="outline">Entrada atual: {accessLabel}</Badge>
                   <Badge variant="outline">
                     Perfil inicial: {user.role === "technician" ? "Tecnico" : user.role}
                   </Badge>
@@ -166,6 +168,12 @@ export function OnboardingPage() {
             </div>
           ) : (
             <form className="space-y-6" onSubmit={(event) => void handleSubmit(event)}>
+              <div className="rounded-2xl border border-elementus-blue/15 bg-elementus-blue/5 p-4 text-sm text-muted-foreground">
+                Este cadastro profissional e a assinatura tecnica ficam salvos uma unica vez na
+                plataforma e podem ser reaproveitados tanto no acesso por Microsoft 365 quanto no
+                acesso por e-mail e senha.
+              </div>
+
               <div className="grid gap-4 md:grid-cols-2">
                 <div>
                   <label className="text-sm font-medium">Nome completo</label>
@@ -305,8 +313,9 @@ export function OnboardingPage() {
 
               <div className="flex items-center justify-between gap-3">
                 <p className="max-w-xl text-sm text-muted-foreground">
-                  Ao concluir, seu cadastro fica persistido no banco da plataforma e o acesso deixa
-                  de depender de configuracao manual no Vercel.
+                  Ao concluir, seu cadastro e sua assinatura ficam persistidos no banco da
+                  plataforma para os dois modos de acesso. O login Microsoft continua sendo usado
+                  quando a acao exigir integracao com Microsoft 365.
                 </p>
                 <Button disabled={isSaving} type="submit">
                   {isSaving ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : null}

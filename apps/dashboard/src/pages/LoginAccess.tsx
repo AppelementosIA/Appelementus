@@ -87,6 +87,10 @@ export function LoginPage() {
                   Esta continua sendo a autenticacao oficial para ligar usuario, emissao e salvamento
                   final no Microsoft 365 com a mesma identidade corporativa.
                 </p>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Depois da entrada, o profissional cai no mesmo cadastro de perfil e assinatura
+                  usado pela plataforma inteira.
+                </p>
               </div>
 
               <Button
@@ -121,6 +125,10 @@ export function LoginPage() {
                 <p className="mt-2 text-sm text-muted-foreground">
                   Esta porta de entrada serve para destravar os testes do fluxo de construcao do
                   relatorio enquanto o Microsoft 365 ainda estiver em homologacao.
+                </p>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  O cadastro profissional e a assinatura preenchidos aqui tambem ficam valendo para
+                  quando o mesmo usuario entrar depois com Microsoft 365.
                 </p>
               </div>
 
