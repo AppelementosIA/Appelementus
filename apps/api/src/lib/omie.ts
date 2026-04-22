@@ -191,7 +191,6 @@ export async function listOmieServiceContractsPage(page = 1, pageSize = 50) {
     {
       pagina: page,
       registros_por_pagina: pageSize,
-      apenas_importado_api: "N",
       cExibirInfoCadastro: "S",
     }
   );

@@ -516,10 +516,17 @@ export async function syncOmieClients(options: SyncOptions = {}): Promise<SyncRe
 }
 
 export async function syncOmieProjects(options: SyncOptions = {}): Promise<SyncResult> {
-  const contractsResult = await syncOmieServiceContractsAsProjects(options);
+  try {
+    const contractsResult = await syncOmieServiceContractsAsProjects(options);
 
-  if (contractsResult.totalFromOmie > 0) {
-    return contractsResult;
+    if (contractsResult.totalFromOmie > 0) {
+      return contractsResult;
+    }
+  } catch (error) {
+    console.warn(
+      "[omie] Falha ao consultar Contratos de Servico. Aplicando fallback para /geral/projetos.",
+      error instanceof Error ? error.message : error
+    );
   }
 
   const pageSize = Math.max(1, Math.min(options.pageSize || 50, 500));
