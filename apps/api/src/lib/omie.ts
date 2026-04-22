@@ -108,18 +108,36 @@ async function omieRequest<TResponse>(
 ) {
   assertOmieConfigured();
 
-  const response = await fetch(`${config.omie.baseUrl}${servicePath}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      call,
-      app_key: config.omie.appKey,
-      app_secret: config.omie.appSecret,
-      param: [params],
-    }),
-  });
+  const timeoutMs =
+    Number.isFinite(config.omie.timeoutMs) && config.omie.timeoutMs > 0
+      ? config.omie.timeoutMs
+      : 15000;
+
+  let response: Response;
+
+  try {
+    response = await fetch(`${config.omie.baseUrl}${servicePath}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        call,
+        app_key: config.omie.appKey,
+        app_secret: config.omie.appSecret,
+        param: [params],
+      }),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === "TimeoutError") {
+      throw new Error(
+        `Timeout ao consultar a Omie em ${servicePath} (${call}) apos ${timeoutMs}ms.`
+      );
+    }
+
+    throw error;
+  }
 
   const payload = (await response.json()) as TResponse;
 

@@ -36,6 +36,7 @@ export const config = {
     baseUrl: (process.env.OMIE_BASE_URL || "https://app.omie.com.br/api/v1").replace(/\/+$/, ""),
     appKey: process.env.OMIE_APP_KEY || "",
     appSecret: process.env.OMIE_APP_SECRET || "",
+    timeoutMs: parseInt(process.env.OMIE_TIMEOUT_MS || "15000", 10),
   },
   n8n: {
     webhookUrl: process.env.N8N_WEBHOOK_URL || "",
