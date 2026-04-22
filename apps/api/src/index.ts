@@ -7,6 +7,8 @@ import reportsRouter from "./routes/reports-platform.js";
 import fieldDataRouter from "./routes/field-data.js";
 import templatesRouter from "./routes/templates.js";
 import usersRouter from "./routes/users.js";
+import omieRouter from "./routes/omie.js";
+import intakeRouter from "./routes/intake.js";
 
 const app = express();
 
@@ -26,6 +28,8 @@ app.use("/api/reports", reportsRouter);
 app.use("/api/field-data", fieldDataRouter);
 app.use("/api/templates", templatesRouter);
 app.use("/api/users", usersRouter);
+app.use("/api/omie", omieRouter);
+app.use("/api/intake", intakeRouter);
 
 // Health check
 app.get("/", (_req, res) => {

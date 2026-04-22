@@ -32,6 +32,11 @@ export const config = {
     apiKey: process.env.EVOLUTION_API_KEY || "",
     instanceName: process.env.EVOLUTION_INSTANCE_NAME || "elementus",
   },
+  omie: {
+    baseUrl: (process.env.OMIE_BASE_URL || "https://app.omie.com.br/api/v1").replace(/\/+$/, ""),
+    appKey: process.env.OMIE_APP_KEY || "",
+    appSecret: process.env.OMIE_APP_SECRET || "",
+  },
   n8n: {
     webhookUrl: process.env.N8N_WEBHOOK_URL || "",
   },
