@@ -16,3 +16,5 @@ coverage/
 _slides/
 slide_img1.png
 .tmp.env.*
+
+.vercel

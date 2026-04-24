@@ -26,6 +26,7 @@ const userSelect = `
   name,
   tenant_id,
   phone,
+  phone_whatsapp,
   avatar_url,
   app_role,
   onboarding_status,
@@ -72,6 +73,7 @@ type RawPlatformUserRow = {
   name: string;
   tenant_id?: string | null;
   phone?: string | null;
+  phone_whatsapp?: string | null;
   avatar_url?: string | null;
   app_role: UserRole;
   onboarding_status: UserOnboardingStatus;
@@ -253,6 +255,9 @@ async function upsertPasswordPlatformUser(input: {
   const existing = await fetchUserByEmail(input.email);
 
   if (existing) {
+    const existingPhone = normalizePhoneForDatabase(existing.phone, { strict: false });
+    const existingWhatsapp =
+      normalizePhoneForDatabase(existing.phone_whatsapp, { strict: false }) || existingPhone;
     const nextEntraOid = existing.entra_oid.startsWith("password:")
       ? buildPasswordEntraOid(input.authUserId)
       : existing.entra_oid;
@@ -264,6 +269,8 @@ async function upsertPasswordPlatformUser(input: {
         email: input.email,
         name: input.name || existing.name,
         tenant_id: existing.tenant_id || "password",
+        phone: existingPhone || existing.phone || null,
+        phone_whatsapp: existingWhatsapp,
         last_login_at: now,
         updated_at: now,
       })
@@ -414,6 +421,42 @@ function sanitizeOptionalText(value: unknown) {
   return normalized ? normalized : null;
 }
 
+function normalizePhoneForDatabase(value: unknown, options: { strict?: boolean } = {}) {
+  const raw = sanitizeOptionalText(value);
+
+  if (!raw) {
+    return null;
+  }
+
+  const strict = options.strict ?? true;
+
+  if (/^\+[1-9][0-9]{7,14}$/.test(raw)) {
+    return raw;
+  }
+
+  const digits = raw.replace(/\D/g, "");
+
+  if (!digits) {
+    return null;
+  }
+
+  const internationalDigits =
+    digits.startsWith("55") || (digits.length !== 10 && digits.length !== 11)
+      ? digits
+      : `55${digits}`;
+  const normalized = `+${internationalDigits}`;
+
+  if (/^\+[1-9][0-9]{7,14}$/.test(normalized)) {
+    return normalized;
+  }
+
+  if (strict) {
+    throw new Error("Informe o telefone no formato WhatsApp com DDD, ex: +5534991549095.");
+  }
+
+  return null;
+}
+
 function sanitizeEmail(value: unknown) {
   if (typeof value !== "string") {
     return null;
@@ -472,8 +515,14 @@ async function syncPlatformUser(input: {
   const existingByOid = await fetchUserByEntraOid(profile.oid);
   const existingByEmail = existingByOid ? null : await fetchUserByEmail(profile.email);
   const existing = existingByOid || existingByEmail;
+  const profilePhone = normalizePhoneForDatabase(profile.phone, { strict: false });
 
   if (existing) {
+    const existingPhone = normalizePhoneForDatabase(existing.phone, { strict: false });
+    const existingWhatsapp =
+      normalizePhoneForDatabase(existing.phone_whatsapp, { strict: false }) || existingPhone;
+    const nextPhone = profilePhone || existingPhone || existing.phone || null;
+
     const { error } = await supabase
       .from("platform_users")
       .update({
@@ -481,7 +530,8 @@ async function syncPlatformUser(input: {
         email: profile.email,
         name: profile.name,
         tenant_id: profile.tenantId || existing.tenant_id || null,
-        phone: profile.phone || existing.phone || null,
+        phone: nextPhone,
+        phone_whatsapp: profilePhone || existingWhatsapp,
         avatar_url: input.avatarUrl ?? existing.avatar_url ?? null,
         last_login_at: now,
         updated_at: now,
@@ -510,7 +560,8 @@ async function syncPlatformUser(input: {
       email: profile.email,
       name: profile.name,
       tenant_id: profile.tenantId || null,
-      phone: profile.phone || null,
+      phone: profilePhone,
+      phone_whatsapp: profilePhone,
       avatar_url: input.avatarUrl || null,
       app_role: "technician",
       onboarding_status: "pending_profile",
@@ -693,7 +744,9 @@ router.patch("/me/onboarding", async (req, res) => {
     const requester = await getRequester(req);
     const now = new Date().toISOString();
     const name = sanitizeOptionalText(req.body.name) || requester.user.name;
-    const phone = sanitizeOptionalText(req.body.phone) ?? requester.user.phone ?? null;
+    const phone =
+      normalizePhoneForDatabase(req.body.phone) ??
+      normalizePhoneForDatabase(requester.user.phone, { strict: false });
     const professionalRole = sanitizeOptionalText(req.body.professional_role);
     const registryType = sanitizeOptionalText(req.body.registry_type);
     const registryNumber = sanitizeOptionalText(req.body.registry_number);
@@ -709,6 +762,7 @@ router.patch("/me/onboarding", async (req, res) => {
       .update({
         name,
         phone,
+        phone_whatsapp: phone,
         onboarding_status: "active",
         updated_at: now,
         last_login_at: now,
@@ -840,13 +894,17 @@ router.patch("/:id", async (req, res) => {
 
     const now = new Date().toISOString();
     const targetProfile = getRawProfile(target.platform_user_profiles);
+    const phone =
+      normalizePhoneForDatabase(req.body.phone) ??
+      normalizePhoneForDatabase(target.phone, { strict: false });
     const { error: userError } = await supabase
       .from("platform_users")
       .update({
         app_role: nextRole || target.app_role,
         is_active: typeof req.body.active === "boolean" ? req.body.active : target.is_active,
         onboarding_status: nextOnboardingStatus || target.onboarding_status,
-        phone: sanitizeOptionalText(req.body.phone) ?? target.phone ?? null,
+        phone,
+        phone_whatsapp: phone,
         approved_at: nextOnboardingStatus === "active" ? now : null,
         approved_by: nextOnboardingStatus === "active" ? requester.user.id : null,
         updated_at: now,
