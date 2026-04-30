@@ -2225,7 +2225,8 @@ router.post("/webhook-ingest", async (req, res) => {
     }
 
     const technicianFirstName = getTechnicianFirstName(user, payload.sender_name);
-    const requestedReportAction = resolveReportAction(messageText);
+    const numericReportActionChoice = ["1", "2"].includes(normalizeComparableText(messageText));
+    let requestedReportAction = resolveReportAction(messageText);
     const existingMessage = await findExistingWhatsappMessage(
       normalizeText(payload.whatsapp_message_id)
     );
@@ -2243,6 +2244,16 @@ router.post("/webhook-ingest", async (req, res) => {
       const activeSessions = await findOpenSessionsForUser(user.id);
       const recentChoiceSession = await findRecentSessionChoiceSession(user.id);
       const pendingFieldReplySession = findPendingFieldReplySession(activeSessions, messageText);
+      const recentChoiceOptions = recentChoiceSession
+        ? normalizeStringArray(getContextData(recentChoiceSession.context_data).whatsapp_session_options)
+        : [];
+
+      if (
+        numericReportActionChoice &&
+        (pendingFieldReplySession || recentChoiceOptions.length > 0)
+      ) {
+        requestedReportAction = null;
+      }
 
       if (pendingFieldReplySession && !requestedReportAction) {
         session = pendingFieldReplySession;
@@ -2253,7 +2264,7 @@ router.post("/webhook-ingest", async (req, res) => {
         const optionIds = normalizeStringArray(choiceContext.whatsapp_session_options);
         const normalizedChoice = normalizeComparableText(messageText);
 
-        if (requestedReportAction === "new_report") {
+        if (requestedReportAction === "new_report" && !numericReportActionChoice) {
           await clearSessionChoiceOptions(user.id);
 
           const newSession = await createOpenSession(user.id, senderPhone);
@@ -2433,7 +2444,12 @@ router.post("/webhook-ingest", async (req, res) => {
         }
       }
 
-      if (!session && requestedReportAction === "new_report" && activeSessions.length > 0) {
+      if (
+        !session &&
+        requestedReportAction === "new_report" &&
+        !numericReportActionChoice &&
+        activeSessions.length > 0
+      ) {
         await clearSessionChoiceOptions(user.id);
         const newSession = await createOpenSession(user.id, senderPhone);
         session = await selectReportActionForSession(newSession, "new_report");
