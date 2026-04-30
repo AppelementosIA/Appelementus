@@ -621,6 +621,40 @@ function buildProjectClarificationText(
   return addressMessage(firstName || null, fullText);
 }
 
+function buildClientChoiceText(
+  candidates: OmieClientRow[],
+  firstName?: string | null
+) {
+  const rows = candidates
+    .map((client, index) => `${index + 1}. ${getClientDisplayName(client)} - CNPJ ${client.cnpj || "sem CNPJ"}`)
+    .join("\n");
+
+  return addressMessage(
+    firstName || null,
+    `ainda estou aguardando a escolha do cadastro do cliente. Escolha pelo numero ou envie o CNPJ completo:\n${rows}`
+  );
+}
+
+function buildProjectChoiceText(
+  projects: OmieProjectRow[],
+  client: OmieClientRow | null,
+  firstName?: string | null
+) {
+  if (!projects.length) {
+    return addressMessage(firstName || null, "qual e o projeto ou contrato deste relatorio?");
+  }
+
+  const target = client ? ` para ${getClientDisplayName(client)}` : "";
+  const rows = projects
+    .map((project, index) => `${index + 1}. ${getProjectDisplayName(project)}`)
+    .join("\n");
+
+  return addressMessage(
+    firstName || null,
+    `ainda estou aguardando a escolha do projeto${target}. Escolha pelo numero da lista, envie o nome do projeto ou o numero do contrato:\n${rows}`
+  );
+}
+
 function buildReportActionQuestion(user?: PlatformUserRow | null, whatsappName?: string | null) {
   const greeting = buildGreeting(getTechnicianFirstName(user, whatsappName));
 
@@ -966,6 +1000,12 @@ function isSessionMenuRequest(text: string | null) {
     "boa tarde",
     "boa noite",
   ].includes(normalized);
+}
+
+function isExplicitSessionMenuRequest(text: string | null) {
+  const normalized = normalizeComparableText(text);
+
+  return ["0", "menu", "inicio", "iniciar", "voltar"].includes(normalized);
 }
 
 function isPositiveIntegerText(text: string | null) {
@@ -1541,6 +1581,32 @@ async function buildSessionResumeText(session: IntakeSessionRow, firstName: stri
     firstName,
     `retomei este relatório: ${row.replace(/^1\.\s*/, "")}. Pode enviar a próxima informação correspondente a esse atendimento.`
   );
+}
+
+async function buildPendingChoiceResumeText(
+  session: IntakeSessionRow,
+  firstName: string | null
+) {
+  const context = getContextData(session.context_data);
+  const pendingClientIds = normalizeStringArray(context.pending_client_candidate_ids);
+
+  if (pendingClientIds.length > 0 && !session.client_id) {
+    const candidates = await getClientCandidatesByIds(pendingClientIds);
+    return buildClientChoiceText(candidates, firstName);
+  }
+
+  const pendingProjectIds = normalizeStringArray(context.pending_project_candidate_ids);
+
+  if (pendingProjectIds.length > 0 && session.client_id && !session.project_id) {
+    const [projects, client] = await Promise.all([
+      getProjectCandidatesByIds(pendingProjectIds),
+      getClientById(session.client_id),
+    ]);
+
+    return buildProjectChoiceText(projects, client, firstName);
+  }
+
+  return buildSessionResumeText(session, firstName);
 }
 
 async function searchProjectCandidates(clientId: string, searchText: string, candidateIds?: string[]) {
@@ -2244,6 +2310,10 @@ router.post("/webhook-ingest", async (req, res) => {
       const activeSessions = await findOpenSessionsForUser(user.id);
       const recentChoiceSession = await findRecentSessionChoiceSession(user.id);
       const pendingFieldReplySession = findPendingFieldReplySession(activeSessions, messageText);
+      const pendingChoiceSession =
+        activeSessions.find((activeSession) => hasPendingClientChoice(activeSession) || hasPendingProjectChoice(activeSession)) ||
+        null;
+      const explicitMenuRequest = isExplicitSessionMenuRequest(messageText);
       const recentChoiceOptions = recentChoiceSession
         ? normalizeStringArray(getContextData(recentChoiceSession.context_data).whatsapp_session_options)
         : [];
@@ -2255,8 +2325,53 @@ router.post("/webhook-ingest", async (req, res) => {
         requestedReportAction = null;
       }
 
-      if (pendingFieldReplySession && !requestedReportAction) {
+      if (pendingFieldReplySession && !requestedReportAction && recentChoiceOptions.length === 0) {
         session = pendingFieldReplySession;
+      }
+
+      if (
+        !session &&
+        pendingChoiceSession &&
+        !requestedReportAction &&
+        !explicitMenuRequest &&
+        !isPendingFieldReply(messageText) &&
+        recentChoiceOptions.length === 0
+      ) {
+        await clearSessionChoiceOptions(user.id);
+
+        const insertedMessage = await insertInboundMessage(pendingChoiceSession.id, payload);
+        messageId = insertedMessage.id;
+        messageIsNew = true;
+        await touchSession(pendingChoiceSession.id);
+        session = (await getSessionById(pendingChoiceSession.id)) || pendingChoiceSession;
+        outboundText = await buildPendingChoiceResumeText(session, technicianFirstName);
+        replyReason = hasPendingClientChoice(session)
+          ? "client_choice_resumed"
+          : hasPendingProjectChoice(session)
+          ? "project_choice_resumed"
+          : "session_resumed";
+        await logOutboundMessage(
+          session.id,
+          outboundText,
+          hasPendingClientChoice(session) ? "client_cnpj_request" : "project_request"
+        );
+
+        res.json(
+          buildWebhookIngestResponse({
+            accepted: true,
+            known_user: true,
+            senderPhone,
+            user,
+            session,
+            messageId,
+            messageIsNew,
+            outboundText,
+            sendReply: true,
+            askPhotoDescriptionNow: false,
+            reason: replyReason,
+          })
+        );
+        return;
       }
 
       if (!session && recentChoiceSession) {
@@ -2308,6 +2423,44 @@ router.post("/webhook-ingest", async (req, res) => {
 
             if (selectedSession) {
               const selectedSessionContext = getContextData(selectedSession.context_data);
+
+              if (hasPendingClientChoice(selectedSession) || hasPendingProjectChoice(selectedSession)) {
+                await clearSessionChoiceOptions(user.id);
+
+                const insertedMessage = await insertInboundMessage(selectedSession.id, payload);
+                messageId = insertedMessage.id;
+                messageIsNew = true;
+                await touchSession(selectedSession.id);
+                session = (await getSessionById(selectedSession.id)) || selectedSession;
+                outboundText = await buildPendingChoiceResumeText(session, technicianFirstName);
+                replyReason = hasPendingClientChoice(session)
+                  ? "client_choice_resumed"
+                  : hasPendingProjectChoice(session)
+                  ? "project_choice_resumed"
+                  : "session_resumed";
+                await logOutboundMessage(
+                  session.id,
+                  outboundText,
+                  hasPendingClientChoice(session) ? "client_cnpj_request" : "project_request"
+                );
+
+                res.json(
+                  buildWebhookIngestResponse({
+                    accepted: true,
+                    known_user: true,
+                    senderPhone,
+                    user,
+                    session,
+                    messageId,
+                    messageIsNew,
+                    outboundText,
+                    sendReply: true,
+                    askPhotoDescriptionNow: false,
+                    reason: replyReason,
+                  })
+                );
+                return;
+              }
 
               if (hasPendingClientChoice(selectedSession)) {
                 const pendingCandidates = await getClientCandidatesByIds(
