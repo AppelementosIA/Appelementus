@@ -1,8 +1,8 @@
 import type { ReportGeneratedData } from "@elementus/shared";
 import { config } from "./config.js";
 
-const FINAL_REPORT_RAG_WEBHOOK_FALLBACK_URL =
-  "https://elementus-n8n.qseovz.easypanel.host/webhook-test/elementus-final-report-rag-native-completo";
+const FINAL_REPORT_DOCX_WEBHOOK_FALLBACK_URL =
+  "https://elementus-n8n.qseovz.easypanel.host/webhook/elementus-final-report-simple-native";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -372,6 +372,70 @@ async function postN8nWebhook(
   }
 }
 
+function normalizeProductionWebhookUrl(value?: string | null) {
+  const url = getString(value);
+
+  if (!url) {
+    return null;
+  }
+
+  return url.replace("/webhook-test/", "/webhook/");
+}
+
+function addUniqueUrl(urls: string[], value?: string | null) {
+  const url = getString(value);
+
+  if (url && !urls.includes(url)) {
+    urls.push(url);
+  }
+}
+
+function buildFinalReportWebhookUrls(configuredUrl?: string | null) {
+  const urls: string[] = [];
+
+  addUniqueUrl(urls, normalizeProductionWebhookUrl(configuredUrl));
+  addUniqueUrl(urls, configuredUrl);
+  addUniqueUrl(urls, FINAL_REPORT_DOCX_WEBHOOK_FALLBACK_URL);
+
+  return urls;
+}
+
+async function postN8nWebhookCandidates(
+  webhookUrls: string[],
+  missingReason: string,
+  payload: Record<string, unknown>,
+  timeoutMs = 10_000
+): Promise<TriggerWorkflowResult> {
+  if (!webhookUrls.length) {
+    return {
+      ok: false,
+      reason: missingReason,
+      webhookUrl: "",
+    };
+  }
+
+  const failures: string[] = [];
+  let lastResult: TriggerWorkflowResult | null = null;
+
+  for (const webhookUrl of webhookUrls) {
+    const result = await postN8nWebhook(webhookUrl, missingReason, payload, timeoutMs);
+
+    if (result.ok) {
+      return result;
+    }
+
+    lastResult = result;
+    failures.push(result.reason || `n8n_request_failed: ${webhookUrl}`);
+  }
+
+  return {
+    ok: false,
+    reason: failures.length ? failures.join(" | ") : missingReason,
+    responseBody: lastResult?.responseBody,
+    webhookUrl: lastResult?.webhookUrl || webhookUrls[0],
+  };
+}
+
 export async function triggerReportGenerationWorkflow(
   input: TriggerReportGenerationInput
 ): Promise<TriggerWorkflowResult> {
@@ -405,33 +469,41 @@ export async function triggerFinalReportRagWorkflow(input: {
   requestedAt: string;
 }): Promise<TriggerWorkflowResult> {
   const mediaAssets = buildFinalReportWebhookAssetReferences(input.generatedData);
-  const webhookUrl = config.n8n.finalReportWebhookUrl || FINAL_REPORT_RAG_WEBHOOK_FALLBACK_URL;
-
-  return postN8nWebhook(
-    webhookUrl,
-    "missing_final_report_webhook_url",
-    {
-      event: "report.final.generate.requested",
-      source: "elementus-api",
-      report_id: input.reportId,
-      project_id: input.projectId,
-      campaign_id: input.campaignId ?? null,
-      template_id: input.templateId,
-      report_number: input.reportNumber,
-      title: input.title,
-      type: input.type,
-      status: input.status,
-      requested_at: input.requestedAt,
+  const assetSummary = {
+    location_map_included: Boolean(mediaAssets.location_map),
+    images_included: mediaAssets.images.length,
+    failures: mediaAssets.failures.length,
+  };
+  const webhookPayload = {
+    event: "report.final.generate.requested",
+    source: "elementus-api",
+    report_id: input.reportId,
+    project_id: input.projectId,
+    campaign_id: input.campaignId ?? null,
+    template_id: input.templateId,
+    report_number: input.reportNumber,
+    title: input.title,
+    type: input.type,
+    report_type: input.type,
+    status: input.status,
+    requested_at: input.requestedAt,
+    generated_data: input.generatedData,
+    stage_snapshots: input.stageSnapshots,
+    media_assets: mediaAssets,
+    asset_summary: assetSummary,
+    generation_mode: "final_docx_simple_native",
+    payload: {
       generated_data: input.generatedData,
       stage_snapshots: input.stageSnapshots,
       media_assets: mediaAssets,
-      asset_summary: {
-        location_map_included: Boolean(mediaAssets.location_map),
-        images_included: mediaAssets.images.length,
-        failures: mediaAssets.failures.length,
-      },
-      generation_mode: "final_rag",
+      asset_summary: assetSummary,
     },
+  };
+
+  return postN8nWebhookCandidates(
+    buildFinalReportWebhookUrls(config.n8n.finalReportWebhookUrl),
+    "missing_final_report_webhook_url",
+    webhookPayload,
     30_000
   );
 }

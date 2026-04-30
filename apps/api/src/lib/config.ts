@@ -42,7 +42,7 @@ export const config = {
     webhookUrl: process.env.N8N_WEBHOOK_URL || "",
     finalReportWebhookUrl:
       process.env.N8N_FINAL_REPORT_WEBHOOK_URL ||
-      "https://elementus-n8n.qseovz.easypanel.host/webhook-test/elementus-final-report-rag-native-completo",
+      "https://elementus-n8n.qseovz.easypanel.host/webhook/elementus-final-report-simple-native",
   },
   maps: {
     mapboxAccessToken: process.env.MAPBOX_ACCESS_TOKEN || "",
