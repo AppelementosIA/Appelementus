@@ -1004,7 +1004,20 @@ router.post("/:id/final-generation", async (req, res) => {
       stageSnapshots,
       requestedAt,
     });
-    const nextGeneratedData = mergeGeneratedData(report.generated_data, {
+    const latestReport = await fetchReportById(req.params.id).catch(() => report);
+    const latestVariables = (latestReport.generated_data?.variables || {}) as Record<string, unknown>;
+    const hasFinalDocx =
+      Boolean(latestReport.docx_url) ||
+      Boolean(latestVariables.docx_url) ||
+      Boolean(latestVariables.microsoft365_docx_url);
+    const nextStatus = workflowResult.ok
+      ? hasFinalDocx
+        ? latestReport.status === "generating"
+          ? "review"
+          : latestReport.status || "review"
+        : "generating"
+      : latestReport.status;
+    const nextGeneratedData = mergeGeneratedData(latestReport.generated_data, {
       metadata: {
         final_rag_requested_at: requestedAt,
         final_rag_triggered: workflowResult.ok,
@@ -1016,7 +1029,7 @@ router.post("/:id/final-generation", async (req, res) => {
     const { data, error } = await supabase
       .from("reports")
       .update({
-        status: workflowResult.ok ? "generating" : report.status,
+        status: nextStatus,
         generated_data: nextGeneratedData,
         updated_at: new Date().toISOString(),
       })
