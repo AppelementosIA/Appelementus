@@ -56,6 +56,10 @@ export interface ReportSectionImage {
   id: string;
   name: string;
   caption: string;
+  original_caption?: string;
+  reviewed_caption?: string;
+  activity_description?: string;
+  location?: string;
   added_at: string;
   source: "upload" | "platform" | "whatsapp";
   preview_url?: string;

@@ -58,10 +58,43 @@ export type OmieServiceContractRecord = Record<string, unknown> & {
   infoCadastro?: Record<string, unknown>;
 };
 
+export type OmieServiceOrderRecord = Record<string, unknown> & {
+  Cabecalho?: Record<string, unknown> & {
+    nCodOS?: number;
+    cCodIntOS?: string;
+    nCodCli?: number;
+    cEtapa?: string;
+    dDtPrevisao?: string;
+    dDtConclusao?: string;
+  };
+  cabecalho?: Record<string, unknown> & {
+    nCodOS?: number;
+    cCodIntOS?: string;
+    nCodCli?: number;
+    cEtapa?: string;
+    dDtPrevisao?: string;
+    dDtConclusao?: string;
+  };
+  InformacoesAdicionais?: Record<string, unknown> & {
+    cNumContrato?: string;
+    nCodProj?: number;
+    cCodObra?: string;
+    cCidadePrestacao?: string;
+  };
+  informacoesAdicionais?: Record<string, unknown> & {
+    cNumContrato?: string;
+    nCodProj?: number;
+    cCodObra?: string;
+    cCidadePrestacao?: string;
+  };
+};
+
 type OmieListResponse<TRecord> = OmiePagination & {
   clientes_cadastro?: TRecord[];
   cadastro?: TRecord[];
   contratoCadastro?: TRecord[];
+  osCadastro?: TRecord[];
+  ordemServicoCadastro?: TRecord[];
 };
 
 function assertOmieConfigured() {
@@ -155,7 +188,12 @@ async function omieRequest<TResponse>(
 
 function normalizeListResponse<TRecord>(
   response: OmieListResponse<TRecord>,
-  preferredArrayKey: "clientes_cadastro" | "cadastro" | "contratoCadastro"
+  preferredArrayKey:
+    | "clientes_cadastro"
+    | "cadastro"
+    | "contratoCadastro"
+    | "osCadastro"
+    | "ordemServicoCadastro"
 ) {
   const items = Array.isArray(response[preferredArrayKey])
     ? (response[preferredArrayKey] as TRecord[])
@@ -163,6 +201,10 @@ function normalizeListResponse<TRecord>(
       ? (response.cadastro as TRecord[])
       : Array.isArray(response.contratoCadastro)
         ? (response.contratoCadastro as TRecord[])
+      : Array.isArray(response.osCadastro)
+        ? (response.osCadastro as TRecord[])
+      : Array.isArray(response.ordemServicoCadastro)
+        ? (response.ordemServicoCadastro as TRecord[])
       : Array.isArray(response.clientes_cadastro)
         ? (response.clientes_cadastro as TRecord[])
         : [];
@@ -214,4 +256,17 @@ export async function listOmieServiceContractsPage(page = 1, pageSize = 50) {
   );
 
   return normalizeListResponse(response, "contratoCadastro");
+}
+
+export async function listOmieServiceOrdersPage(page = 1, pageSize = 50) {
+  const response = await omieRequest<OmieListResponse<OmieServiceOrderRecord>>(
+    "/servicos/os/",
+    "ListarOS",
+    {
+      pagina: page,
+      registros_por_pagina: pageSize,
+    }
+  );
+
+  return normalizeListResponse(response, "osCadastro");
 }

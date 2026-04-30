@@ -27,6 +27,7 @@ export interface PlatformUser {
   role: UserRole;
   tenant_id?: string;
   phone?: string;
+  phone_whatsapp?: string;
   avatar_url?: string;
   active: boolean;
   onboarding_status: UserOnboardingStatus;
@@ -36,4 +37,19 @@ export interface PlatformUser {
   last_login_at?: string;
   professional_register?: string;
   professional_profile?: ProfessionalProfile | null;
+}
+
+export interface ReportSignerSnapshot {
+  id: string;
+  report_id: string;
+  user_id?: string | null;
+  name_snapshot: string;
+  role_snapshot?: string | null;
+  registry_type_snapshot?: string | null;
+  registry_number_snapshot?: string | null;
+  signature_name_snapshot?: string | null;
+  signature_data_url_snapshot?: string | null;
+  signature_status_snapshot: SignatureStatus;
+  created_at: string;
+  updated_at: string;
 }

@@ -40,6 +40,21 @@ export const config = {
   },
   n8n: {
     webhookUrl: process.env.N8N_WEBHOOK_URL || "",
+    finalReportWebhookUrl:
+      process.env.N8N_FINAL_REPORT_WEBHOOK_URL ||
+      "https://elementus-n8n.qseovz.easypanel.host/webhook-test/elementus-final-report-rag-native-completo",
+  },
+  maps: {
+    mapboxAccessToken: process.env.MAPBOX_ACCESS_TOKEN || "",
+    mapboxStyleId: process.env.MAPBOX_STYLE_ID || "mapbox/streets-v12",
+    mapTilerApiKey: process.env.MAPTILER_API_KEY || "",
+    mapTilerMapId: process.env.MAPTILER_MAP_ID || "satellite",
+    nominatimBaseUrl: (
+      process.env.NOMINATIM_BASE_URL || "https://nominatim.openstreetmap.org"
+    ).replace(/\/+$/, ""),
+    userAgent:
+      process.env.MAPS_USER_AGENT ||
+      "ElementusRelatorios/0.1 contato@elementus-sa.com.br",
   },
   microsoft365: {
     driveId: process.env.MICROSOFT_365_DRIVE_ID || "",

@@ -5,6 +5,7 @@ import type {
   UserOnboardingStatus,
   UserRole,
 } from "@elementus/shared";
+import { randomUUID } from "node:crypto";
 import { Router } from "express";
 import { config } from "../lib/config.js";
 import { fetchMicrosoftGraphUserProfile } from "../lib/microsoft-graph.js";
@@ -24,6 +25,7 @@ const userSelect = `
   entra_oid,
   email,
   name,
+  full_name,
   tenant_id,
   phone,
   phone_whatsapp,
@@ -51,6 +53,37 @@ const userSelect = `
   )
 `;
 
+const userListSelect = `
+  id,
+  entra_oid,
+  email,
+  name,
+  full_name,
+  tenant_id,
+  phone,
+  phone_whatsapp,
+  avatar_url,
+  app_role,
+  onboarding_status,
+  is_active,
+  created_by,
+  created_at,
+  updated_at,
+  last_login_at,
+  platform_user_profiles (
+    user_id,
+    professional_role,
+    registry_type,
+    registry_number,
+    can_sign_reports,
+    signature_name,
+    signature_status,
+    signature_updated_at,
+    created_at,
+    updated_at
+  )
+`;
+
 type RawPlatformProfileRow = {
   user_id: string;
   professional_role?: string | null;
@@ -71,6 +104,7 @@ type RawPlatformUserRow = {
   entra_oid: string;
   email: string;
   name: string;
+  full_name?: string | null;
   tenant_id?: string | null;
   phone?: string | null;
   phone_whatsapp?: string | null;
@@ -137,15 +171,18 @@ function getRawProfile(profile: RawPlatformUserRow["platform_user_profiles"]) {
 
 function mapPlatformUser(row: RawPlatformUserRow): PlatformUser {
   const profile = normalizeProfile(row.platform_user_profiles);
+  const whatsappPhone = normalizePhoneForDatabase(row.phone_whatsapp, { strict: false });
+  const displayName = sanitizeOptionalText(row.full_name) || row.name;
 
   return {
     id: row.id,
     entra_oid: row.entra_oid,
     email: row.email,
-    name: row.name,
+    name: displayName,
     role: row.app_role,
     tenant_id: row.tenant_id || undefined,
-    phone: row.phone || undefined,
+    phone: whatsappPhone || row.phone || undefined,
+    phone_whatsapp: whatsappPhone || undefined,
     avatar_url: row.avatar_url || undefined,
     active: row.is_active,
     onboarding_status: row.onboarding_status,
@@ -256,8 +293,13 @@ async function upsertPasswordPlatformUser(input: {
 
   if (existing) {
     const existingPhone = normalizePhoneForDatabase(existing.phone, { strict: false });
-    const existingWhatsapp =
-      normalizePhoneForDatabase(existing.phone_whatsapp, { strict: false }) || existingPhone;
+    const existingWhatsapp = normalizePhoneForDatabase(existing.phone_whatsapp, { strict: false });
+    const nextPhone = existingWhatsapp || existingPhone || existing.phone || null;
+    const existingName = sanitizeOptionalText(existing.full_name) || existing.name;
+    const nextName =
+      existing.onboarding_status === "active"
+        ? existingName
+        : input.name || existingName;
     const nextEntraOid = existing.entra_oid.startsWith("password:")
       ? buildPasswordEntraOid(input.authUserId)
       : existing.entra_oid;
@@ -267,9 +309,10 @@ async function upsertPasswordPlatformUser(input: {
       .update({
         entra_oid: nextEntraOid,
         email: input.email,
-        name: input.name || existing.name,
+        name: nextName,
+        full_name: nextName,
         tenant_id: existing.tenant_id || "password",
-        phone: existingPhone || existing.phone || null,
+        phone: nextPhone,
         phone_whatsapp: existingWhatsapp,
         last_login_at: now,
         updated_at: now,
@@ -506,6 +549,90 @@ function sanitizeDataUrl(value: unknown) {
   return normalized;
 }
 
+async function saveOwnProfile(
+  requester: Requester,
+  body: Record<string, unknown>,
+  options: { activate: boolean }
+) {
+  const now = new Date().toISOString();
+  const currentProfile = requester.user.professional_profile;
+  const name = sanitizeOptionalText(body.name) || requester.user.name;
+  const phone = normalizePhoneForDatabase(body.phone_whatsapp ?? body.phone);
+  const professionalRole =
+    sanitizeOptionalText(body.professional_role) ?? currentProfile?.professional_role ?? null;
+  const registryType =
+    sanitizeOptionalText(body.registry_type) ?? currentProfile?.registry_type ?? null;
+  const registryNumber =
+    sanitizeOptionalText(body.registry_number) ?? currentProfile?.registry_number ?? null;
+  const canSignReports = Boolean(body.can_sign_reports);
+  const signatureName =
+    sanitizeOptionalText(body.signature_name) ?? currentProfile?.signature_name ?? name;
+  const receivedSignatureDataUrl = sanitizeDataUrl(body.signature_data_url);
+  const signatureDataUrl =
+    receivedSignatureDataUrl ?? currentProfile?.signature_data_url ?? null;
+  const hasNewSignature =
+    Boolean(receivedSignatureDataUrl) && receivedSignatureDataUrl !== currentProfile?.signature_data_url;
+  const signatureMimeType =
+    sanitizeOptionalText(body.signature_mime_type) ?? currentProfile?.signature_mime_type ?? null;
+  const signatureStatus: SignatureStatus = !canSignReports
+    ? "missing"
+    : hasNewSignature
+      ? "pending_review"
+      : currentProfile?.signature_status || (signatureDataUrl ? "pending_review" : "missing");
+
+  if (!phone) {
+    throw new Error("Informe o WhatsApp que sera usado para conversar com o bot.");
+  }
+
+  const { error: userError } = await supabase
+    .from("platform_users")
+    .update({
+      name,
+      full_name: name,
+      phone,
+      phone_whatsapp: phone,
+      onboarding_status: options.activate ? "active" : requester.user.onboarding_status,
+      updated_at: now,
+      last_login_at: now,
+    })
+    .eq("id", requester.user.id);
+
+  if (userError) {
+    throw new Error(userError.message);
+  }
+
+  const { error: profileError } = await supabase
+    .from("platform_user_profiles")
+    .upsert({
+      user_id: requester.user.id,
+      professional_role: professionalRole,
+      registry_type: registryType,
+      registry_number: registryNumber,
+      can_sign_reports: canSignReports,
+      signature_name: canSignReports ? signatureName : null,
+      signature_data_url: canSignReports ? signatureDataUrl : null,
+      signature_mime_type: canSignReports ? signatureMimeType : null,
+      signature_status: signatureStatus,
+      signature_updated_at:
+        canSignReports && (hasNewSignature || !currentProfile?.signature_updated_at)
+          ? now
+          : currentProfile?.signature_updated_at ?? null,
+      updated_at: now,
+    });
+
+  if (profileError) {
+    throw new Error(profileError.message);
+  }
+
+  const nextUser = await fetchUserById(requester.user.id);
+
+  if (!nextUser) {
+    throw new Error("Usuario nao encontrado apos salvar o cadastro.");
+  }
+
+  return mapPlatformUser(nextUser);
+}
+
 async function syncPlatformUser(input: {
   accessToken: string;
   avatarUrl?: string | null;
@@ -519,19 +646,21 @@ async function syncPlatformUser(input: {
 
   if (existing) {
     const existingPhone = normalizePhoneForDatabase(existing.phone, { strict: false });
-    const existingWhatsapp =
-      normalizePhoneForDatabase(existing.phone_whatsapp, { strict: false }) || existingPhone;
-    const nextPhone = profilePhone || existingPhone || existing.phone || null;
+    const existingWhatsapp = normalizePhoneForDatabase(existing.phone_whatsapp, { strict: false });
+    const nextPhone = existingWhatsapp || existingPhone || profilePhone || existing.phone || null;
+    const existingName = sanitizeOptionalText(existing.full_name) || existing.name;
+    const nextName = existing.onboarding_status === "active" ? existingName : profile.name;
 
     const { error } = await supabase
       .from("platform_users")
       .update({
         entra_oid: profile.oid,
         email: profile.email,
-        name: profile.name,
+        name: nextName,
+        full_name: nextName,
         tenant_id: profile.tenantId || existing.tenant_id || null,
         phone: nextPhone,
-        phone_whatsapp: profilePhone || existingWhatsapp,
+        phone_whatsapp: existingWhatsapp,
         avatar_url: input.avatarUrl ?? existing.avatar_url ?? null,
         last_login_at: now,
         updated_at: now,
@@ -559,9 +688,10 @@ async function syncPlatformUser(input: {
       entra_oid: profile.oid,
       email: profile.email,
       name: profile.name,
+      full_name: profile.name,
       tenant_id: profile.tenantId || null,
       phone: profilePhone,
-      phone_whatsapp: profilePhone,
+      phone_whatsapp: null,
       avatar_url: input.avatarUrl || null,
       app_role: "technician",
       onboarding_status: "pending_profile",
@@ -742,71 +872,24 @@ router.get("/me", async (req, res) => {
 router.patch("/me/onboarding", async (req, res) => {
   try {
     const requester = await getRequester(req);
-    const now = new Date().toISOString();
-    const name = sanitizeOptionalText(req.body.name) || requester.user.name;
-    const phone =
-      normalizePhoneForDatabase(req.body.phone) ??
-      normalizePhoneForDatabase(requester.user.phone, { strict: false });
-    const professionalRole = sanitizeOptionalText(req.body.professional_role);
-    const registryType = sanitizeOptionalText(req.body.registry_type);
-    const registryNumber = sanitizeOptionalText(req.body.registry_number);
-    const canSignReports = Boolean(req.body.can_sign_reports);
-    const signatureName = sanitizeOptionalText(req.body.signature_name);
-    const signatureDataUrl = sanitizeDataUrl(req.body.signature_data_url);
-    const signatureMimeType = sanitizeOptionalText(req.body.signature_mime_type);
-    const signatureStatus =
-      canSignReports && signatureDataUrl ? "pending_review" : ("missing" as SignatureStatus);
-
-    const { error: userError } = await supabase
-      .from("platform_users")
-      .update({
-        name,
-        phone,
-        phone_whatsapp: phone,
-        onboarding_status: "active",
-        updated_at: now,
-        last_login_at: now,
-      })
-      .eq("id", requester.user.id);
-
-    if (userError) {
-      res.status(400).json({ error: userError.message });
-      return;
-    }
-
-    const { error: profileError } = await supabase
-      .from("platform_user_profiles")
-      .upsert({
-        user_id: requester.user.id,
-        professional_role: professionalRole,
-        registry_type: registryType,
-        registry_number: registryNumber,
-        can_sign_reports: canSignReports,
-        signature_name: canSignReports ? signatureName : null,
-        signature_data_url: canSignReports ? signatureDataUrl : null,
-        signature_mime_type: canSignReports ? signatureMimeType : null,
-        signature_status: signatureStatus,
-        signature_updated_at: canSignReports && signatureDataUrl ? now : null,
-        updated_at: now,
-      });
-
-    if (profileError) {
-      res.status(400).json({ error: profileError.message });
-      return;
-    }
-
-    const nextUser = await fetchUserById(requester.user.id);
-
-    if (!nextUser) {
-      res.status(404).json({ error: "Usuario nao encontrado apos concluir o onboarding." });
-      return;
-    }
-
-    res.json(mapPlatformUser(nextUser));
+    const nextUser = await saveOwnProfile(requester, req.body, { activate: true });
+    res.json(nextUser);
   } catch (error) {
-    res.status(401).json({
+    res.status(400).json({
       error:
         error instanceof Error ? error.message : "Nao foi possivel concluir o primeiro acesso.",
+    });
+  }
+});
+
+router.patch("/me/profile", async (req, res) => {
+  try {
+    const requester = await getRequester(req);
+    const nextUser = await saveOwnProfile(requester, req.body, { activate: false });
+    res.json(nextUser);
+  } catch (error) {
+    res.status(400).json({
+      error: error instanceof Error ? error.message : "Nao foi possivel atualizar o cadastro.",
     });
   }
 });
@@ -829,11 +912,16 @@ router.get("/signers", async (req, res) => {
 
     const signers = (data as RawPlatformUserRow[])
       .map(mapPlatformUser)
-      .filter(
-        (user) =>
-          user.professional_profile?.can_sign_reports &&
-          user.professional_profile.signature_status === "approved"
-      );
+      .filter((user) => {
+        const profile = user.professional_profile;
+
+        return (
+          profile?.can_sign_reports &&
+          Boolean(profile.signature_data_url) &&
+          (profile.signature_status === "approved" ||
+            profile.signature_status === "pending_review")
+        );
+      });
 
     res.json(signers);
   } catch (error) {
@@ -850,7 +938,7 @@ router.get("/", async (req, res) => {
 
     const { data, error } = await supabase
       .from("platform_users")
-      .select(userSelect)
+      .select(userListSelect)
       .order("name", { ascending: true });
 
     if (error) {
@@ -862,6 +950,134 @@ router.get("/", async (req, res) => {
   } catch (error) {
     res.status(403).json({
       error: error instanceof Error ? error.message : "Nao foi possivel listar os usuarios.",
+    });
+  }
+});
+
+router.post("/", async (req, res) => {
+  try {
+    const requester = await getRequester(req);
+    assertRole(requester.user, "manager");
+
+    const email = sanitizeEmail(req.body.email);
+    const name = sanitizeOptionalText(req.body.name);
+    const nextRole = getUserRoleFromBody(req.body.role) || "technician";
+    const nextOnboardingStatus =
+      getOnboardingStatusFromBody(req.body.onboarding_status) || "active";
+    const nextSignatureStatus = getSignatureStatusFromBody(req.body.signature_status);
+    const phone = normalizePhoneForDatabase(req.body.phone_whatsapp ?? req.body.phone);
+
+    if (!email || !name) {
+      res.status(400).json({ error: "Informe nome e e-mail para criar o cadastro." });
+      return;
+    }
+
+    if (!canManageRole(requester.user.role, nextRole)) {
+      res.status(403).json({ error: "Voce nao pode criar este nivel de acesso." });
+      return;
+    }
+
+    const existing = await fetchUserByEmail(email);
+
+    if (existing) {
+      res.status(409).json({ error: "Ja existe um usuario cadastrado com este e-mail." });
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const signatureDataUrl = sanitizeDataUrl(req.body.signature_data_url);
+    const canSignReports = Boolean(req.body.can_sign_reports);
+
+    const { data: created, error: insertError } = await supabase
+      .from("platform_users")
+      .insert({
+        entra_oid: `manual:${randomUUID()}`,
+        email,
+        name,
+        full_name: name,
+        tenant_id: "manual",
+        phone,
+        phone_whatsapp: phone,
+        app_role: nextRole,
+        onboarding_status: nextOnboardingStatus,
+        is_active: typeof req.body.active === "boolean" ? req.body.active : true,
+        created_by: requester.user.id,
+        approved_at: nextOnboardingStatus === "active" ? now : null,
+        approved_by: nextOnboardingStatus === "active" ? requester.user.id : null,
+        last_login_at: null,
+        updated_at: now,
+      })
+      .select(userSelect)
+      .single();
+
+    if (insertError) {
+      res.status(400).json({ error: insertError.message });
+      return;
+    }
+
+    const { error: profileError } = await supabase
+      .from("platform_user_profiles")
+      .upsert({
+        user_id: created.id,
+        professional_role: sanitizeOptionalText(req.body.professional_role),
+        registry_type: sanitizeOptionalText(req.body.registry_type),
+        registry_number: sanitizeOptionalText(req.body.registry_number),
+        can_sign_reports: canSignReports,
+        signature_name: canSignReports ? sanitizeOptionalText(req.body.signature_name) ?? name : null,
+        signature_data_url: canSignReports ? signatureDataUrl : null,
+        signature_mime_type: canSignReports ? sanitizeOptionalText(req.body.signature_mime_type) : null,
+        signature_status: canSignReports
+          ? nextSignatureStatus || (signatureDataUrl ? "pending_review" : "missing")
+          : "missing",
+        signature_updated_at: canSignReports && (signatureDataUrl || nextSignatureStatus) ? now : null,
+        updated_at: now,
+      });
+
+    if (profileError) {
+      res.status(400).json({ error: profileError.message });
+      return;
+    }
+
+    const nextUser = await fetchUserById(created.id);
+
+    if (!nextUser) {
+      res.status(404).json({ error: "Nao foi possivel recarregar o usuario criado." });
+      return;
+    }
+
+    res.status(201).json(mapPlatformUser(nextUser));
+  } catch (error) {
+    res.status(403).json({
+      error: error instanceof Error ? error.message : "Nao foi possivel criar o usuario.",
+    });
+  }
+});
+
+router.get("/:id", async (req, res) => {
+  try {
+    const requester = await getRequester(req);
+    assertRole(requester.user, "manager");
+
+    const target = await fetchUserById(req.params.id);
+
+    if (!target) {
+      res.status(404).json({ error: "Usuario nao encontrado." });
+      return;
+    }
+
+    if (
+      requester.user.role !== "ceo" &&
+      target.id !== requester.user.id &&
+      !canManageRole(requester.user.role, target.app_role)
+    ) {
+      res.status(403).json({ error: "Voce nao pode visualizar este usuario." });
+      return;
+    }
+
+    res.json(mapPlatformUser(target));
+  } catch (error) {
+    res.status(403).json({
+      error: error instanceof Error ? error.message : "Nao foi possivel carregar o usuario.",
     });
   }
 });
@@ -882,24 +1098,32 @@ router.patch("/:id", async (req, res) => {
     const nextOnboardingStatus = getOnboardingStatusFromBody(req.body.onboarding_status);
     const nextSignatureStatus = getSignatureStatusFromBody(req.body.signature_status);
 
-    if (nextRole && !canManageRole(requester.user.role, nextRole)) {
+    if (nextRole && nextRole !== target.app_role && !canManageRole(requester.user.role, nextRole)) {
       res.status(403).json({ error: "Voce nao pode atribuir este nivel de acesso." });
       return;
     }
 
-    if (requester.user.role !== "ceo" && !canManageRole(requester.user.role, target.app_role)) {
+    if (
+      requester.user.role !== "ceo" &&
+      target.id !== requester.user.id &&
+      !canManageRole(requester.user.role, target.app_role)
+    ) {
       res.status(403).json({ error: "Voce nao pode editar este usuario." });
       return;
     }
 
     const now = new Date().toISOString();
     const targetProfile = getRawProfile(target.platform_user_profiles);
+    const name = sanitizeOptionalText(req.body.name) || target.name;
     const phone =
-      normalizePhoneForDatabase(req.body.phone) ??
+      normalizePhoneForDatabase(req.body.phone_whatsapp ?? req.body.phone) ??
+      normalizePhoneForDatabase(target.phone_whatsapp, { strict: false }) ??
       normalizePhoneForDatabase(target.phone, { strict: false });
     const { error: userError } = await supabase
       .from("platform_users")
       .update({
+        name,
+        full_name: name,
         app_role: nextRole || target.app_role,
         is_active: typeof req.body.active === "boolean" ? req.body.active : target.is_active,
         onboarding_status: nextOnboardingStatus || target.onboarding_status,

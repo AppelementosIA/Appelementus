@@ -54,6 +54,11 @@ interface TemplateData {
   resultados?: string;
   conclusao?: string;
   referencias?: string;
+  signatarios?: Array<{
+    nome: string;
+    cargo?: string;
+    registro?: string;
+  }>;
   figuras?: Array<{
     titulo: string;
     legenda: string;
@@ -109,6 +114,9 @@ function buildSectionLookup(report: ReportDocumentSource) {
 function buildTemplateData(report: ReportDocumentSource): TemplateData {
   const sections = buildSectionLookup(report);
   const variables = (report.generated_data?.variables || {}) as Record<string, unknown>;
+  const reportSigners = Array.isArray(variables.report_signers)
+    ? (variables.report_signers as Array<Record<string, unknown>>)
+    : [];
   const photosSection = report.generated_data?.sections.find(
     (section) => section.id === "photos" || section.key === "photos"
   );
@@ -129,6 +137,17 @@ function buildTemplateData(report: ReportDocumentSource): TemplateData {
     resultados: sections.get("results"),
     conclusao: sections.get("conclusion"),
     referencias: sections.get("references"),
+    signatarios: reportSigners.map((signer) => {
+      const registry = [signer.registry_type, signer.registry_number]
+        .filter((value) => typeof value === "string" && value.trim())
+        .join(" ");
+
+      return {
+        nome: String(signer.name || ""),
+        cargo: typeof signer.role === "string" ? signer.role : undefined,
+        registro: registry || undefined,
+      };
+    }),
     figuras:
       photosSection?.images?.map((image) => ({
         titulo: image.name,
@@ -139,6 +158,9 @@ function buildTemplateData(report: ReportDocumentSource): TemplateData {
 
 function buildFallbackDocumentXml(report: ReportDocumentSource) {
   const variables = (report.generated_data?.variables || {}) as Record<string, unknown>;
+  const reportSigners = Array.isArray(variables.report_signers)
+    ? (variables.report_signers as Array<Record<string, unknown>>)
+    : [];
   const sections = report.generated_data?.sections ?? [];
   const paragraphs: string[] = [];
 
@@ -157,6 +179,19 @@ function buildFallbackDocumentXml(report: ReportDocumentSource) {
       )}`
     )
   );
+  if (reportSigners.length > 0) {
+    paragraphs.push(buildParagraphXml("Assinaturas selecionadas:", { bold: true }));
+
+    for (const signer of reportSigners) {
+      const registry = [signer.registry_type, signer.registry_number]
+        .filter((value) => typeof value === "string" && value.trim())
+        .join(" ");
+      const role = typeof signer.role === "string" && signer.role.trim() ? ` - ${signer.role}` : "";
+      const registryLabel = registry ? ` (${registry})` : "";
+
+      paragraphs.push(buildParagraphXml(`- ${String(signer.name || "Signatario")}${role}${registryLabel}`));
+    }
+  }
   paragraphs.push(buildParagraphXml(`Data de emissao: ${formatDateLabel(report.updated_at)}`));
   paragraphs.push(buildParagraphXml(" "));
 

@@ -9,6 +9,7 @@ import templatesRouter from "./routes/templates.js";
 import usersRouter from "./routes/users.js";
 import omieRouter from "./routes/omie.js";
 import intakeRouter from "./routes/intake.js";
+import mapsRouter from "./routes/maps.js";
 
 const app = express();
 
@@ -30,6 +31,7 @@ app.use("/api/templates", templatesRouter);
 app.use("/api/users", usersRouter);
 app.use("/api/omie", omieRouter);
 app.use("/api/intake", intakeRouter);
+app.use("/api/maps", mapsRouter);
 
 // Health check
 app.get("/", (_req, res) => {

@@ -3,9 +3,11 @@ import {
   listOmieClientsPage,
   listOmieProjectsPage,
   listOmieServiceContractsPage,
+  listOmieServiceOrdersPage,
   type OmieClientRecord,
   type OmieProjectRecord,
   type OmieServiceContractRecord,
+  type OmieServiceOrderRecord,
 } from "./omie.js";
 
 type SyncOptions = {
@@ -120,6 +122,16 @@ function chunkItems<TItem>(items: TItem[], size: number) {
   return chunks;
 }
 
+function dedupeProjectRows(rows: OmieProjectMirrorRow[]) {
+  const deduped = new Map<number, OmieProjectMirrorRow>();
+
+  for (const row of rows) {
+    deduped.set(row.codigo_projeto_omie, row);
+  }
+
+  return Array.from(deduped.values());
+}
+
 function buildPhone(
   ddd: unknown,
   number: unknown,
@@ -174,6 +186,41 @@ function mapContractStatus(statusCode: unknown) {
   }
 }
 
+function normalizeServiceOrderHeader(order: OmieServiceOrderRecord) {
+  return ((order.Cabecalho || order.cabecalho) as Record<string, unknown> | undefined) ?? {};
+}
+
+function normalizeServiceOrderAdditionalInfo(order: OmieServiceOrderRecord) {
+  return (
+    (order.InformacoesAdicionais || order.informacoesAdicionais) as
+      | Record<string, unknown>
+      | undefined
+  ) ?? {};
+}
+
+function mapServiceOrderStatus(statusCode: unknown) {
+  const normalized = toNullableString(statusCode)?.toLowerCase();
+
+  switch (normalized) {
+    case "cancelada":
+    case "cancelado":
+    case "canceled":
+    case "cancelled":
+      return "cancelled";
+    case "concluida":
+    case "concluído":
+    case "concluido":
+    case "finalizada":
+    case "encerrada":
+    case "fechada":
+    case "closed":
+    case "finished":
+      return "finished";
+    default:
+      return "active";
+  }
+}
+
 function buildContractProjectName(
   contract: OmieServiceContractRecord,
   codigoContrato: number
@@ -190,6 +237,28 @@ function buildContractProjectName(
   if (serviceCity) {
     descriptors.push(serviceCity);
   }
+
+  if (descriptors.length === 0) {
+    return baseName;
+  }
+
+  return `${baseName} - ${descriptors.join(" / ")}`;
+}
+
+function buildServiceOrderProjectName(order: OmieServiceOrderRecord, fallbackCode: number) {
+  const header = normalizeServiceOrderHeader(order);
+  const additional = normalizeServiceOrderAdditionalInfo(order);
+  const contractNumber = toNullableString(additional.cNumContrato);
+  const projectCode = toNullableNumber(additional.nCodProj);
+  const city = toNullableString(additional.cCidadePrestacao);
+  const workCode = toNullableString(additional.cCodObra);
+
+  const baseName =
+    contractNumber ||
+    (projectCode ? `Projeto ${projectCode}` : null) ||
+    `OS ${fallbackCode}`;
+
+  const descriptors = [workCode, city].filter((value): value is string => Boolean(value));
 
   if (descriptors.length === 0) {
     return baseName;
@@ -464,6 +533,57 @@ function mapOmieServiceContractAsProject(
   };
 }
 
+function mapOmieServiceOrderAsProject(
+  order: OmieServiceOrderRecord,
+  clientLookup: Map<string, string>,
+  syncedAt: string
+): OmieProjectMirrorRow | null {
+  const header = normalizeServiceOrderHeader(order);
+  const additional = normalizeServiceOrderAdditionalInfo(order);
+  const codigoOrdemServico = toNullableNumber(header.nCodOS);
+  const codigoProjeto = toNullableNumber(additional.nCodProj);
+  const codigoEspelho = codigoProjeto || codigoOrdemServico;
+  const clientCode = toNullableNumber(header.nCodCli);
+
+  if (!codigoEspelho || !clientCode) {
+    return null;
+  }
+
+  const clientId = clientLookup.get(`omie_code:${clientCode}`);
+
+  if (!clientId) {
+    return null;
+  }
+
+  const nome = buildServiceOrderProjectName(order, codigoEspelho);
+
+  return {
+    codigo_projeto_omie: codigoEspelho,
+    codigo_integracao: toNullableString(header.cCodIntOS),
+    client_id: clientId,
+    nome,
+    empreendimento_nome: nome,
+    empreendimento_endereco: toNullableString(additional.cCodObra),
+    empreendimento_cidade: toNullableString(additional.cCidadePrestacao),
+    empreendimento_estado: null,
+    latitude: null,
+    longitude: null,
+    utm_easting: null,
+    utm_northing: null,
+    utm_zone: null,
+    utm_datum: "SIRGAS 2000",
+    numero_contrato: toNullableString(additional.cNumContrato),
+    data_inicio: toIsoDate(header.dDtPrevisao),
+    data_fim: toIsoDate(header.dDtConclusao),
+    status: mapServiceOrderStatus(header.cEtapa),
+    raw_omie_payload: {
+      source: "service_order",
+      ...order,
+    },
+    synced_at: syncedAt,
+  };
+}
+
 async function upsertProjectBatch(batch: OmieProjectMirrorRow[]) {
   const { error } = await supabase
     .from("omie_projects_mirror")
@@ -529,6 +649,19 @@ export async function syncOmieProjects(options: SyncOptions = {}): Promise<SyncR
     );
   }
 
+  try {
+    const serviceOrdersResult = await syncOmieServiceOrdersAsProjects(options);
+
+    if (serviceOrdersResult.totalFromOmie > 0) {
+      return serviceOrdersResult;
+    }
+  } catch (error) {
+    console.warn(
+      "[omie] Falha ao consultar Ordens de Servico. Aplicando fallback para /geral/projetos.",
+      error instanceof Error ? error.message : error
+    );
+  }
+
   const pageSize = Math.max(1, Math.min(options.pageSize || 50, 500));
   const maxPages = options.maxPages || Number.POSITIVE_INFINITY;
   const syncedAt = new Date().toISOString();
@@ -545,9 +678,11 @@ export async function syncOmieProjects(options: SyncOptions = {}): Promise<SyncR
     totalFromOmie = response.totalRecords;
 
     const clientLookup = await loadClientLookup(response.items);
-    const rows = response.items
+    const rows = dedupeProjectRows(
+      response.items
       .map((item) => mapOmieProject(item, clientLookup, syncedAt))
-      .filter((item): item is OmieProjectMirrorRow => Boolean(item));
+      .filter((item): item is OmieProjectMirrorRow => Boolean(item))
+    );
 
     skipped += response.items.length - rows.length;
 
@@ -593,9 +728,61 @@ async function syncOmieServiceContractsAsProjects(
       .filter((value): value is number => Boolean(value));
 
     const clientLookup = await loadClientLookupByOmieCodes(clientCodes);
-    const rows = response.items
+    const rows = dedupeProjectRows(
+      response.items
       .map((item) => mapOmieServiceContractAsProject(item, clientLookup, syncedAt))
-      .filter((item): item is OmieProjectMirrorRow => Boolean(item));
+      .filter((item): item is OmieProjectMirrorRow => Boolean(item))
+    );
+
+    skipped += response.items.length - rows.length;
+
+    for (const batch of chunkItems(rows, 100)) {
+      await upsertProjectBatch(batch);
+      synced += batch.length;
+    }
+
+    page += 1;
+  } while (page <= totalPages);
+
+  return {
+    synced,
+    skipped,
+    pagesProcessed: Math.max(0, page - 1),
+    totalFromOmie,
+  };
+}
+
+async function syncOmieServiceOrdersAsProjects(
+  options: SyncOptions = {}
+): Promise<SyncResult> {
+  const pageSize = Math.max(1, Math.min(options.pageSize || 50, 500));
+  const maxPages = options.maxPages || Number.POSITIVE_INFINITY;
+  const syncedAt = new Date().toISOString();
+
+  let page = 1;
+  let totalPages = 1;
+  let synced = 0;
+  let skipped = 0;
+  let totalFromOmie = 0;
+
+  do {
+    const response = await listOmieServiceOrdersPage(page, pageSize);
+    totalPages = Math.min(response.totalPages, maxPages);
+    totalFromOmie = response.totalRecords;
+
+    const clientCodes = response.items
+      .map((item) => {
+        const header = normalizeServiceOrderHeader(item);
+        return toNullableNumber(header.nCodCli);
+      })
+      .filter((value): value is number => Boolean(value));
+
+    const clientLookup = await loadClientLookupByOmieCodes(clientCodes);
+    const rows = dedupeProjectRows(
+      response.items
+        .map((item) => mapOmieServiceOrderAsProject(item, clientLookup, syncedAt))
+        .filter((item): item is OmieProjectMirrorRow => Boolean(item))
+    );
 
     skipped += response.items.length - rows.length;
 

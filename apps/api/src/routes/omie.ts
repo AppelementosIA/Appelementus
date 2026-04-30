@@ -112,7 +112,7 @@ router.post("/sync/projects", async (req, res) => {
       target: "projects",
       note:
         result.totalFromOmie > 0
-          ? "Projetos operacionais espelhados a partir dos Contratos de Servico da Omie quando disponiveis; fallback automatico para /geral/projetos."
+          ? "Projetos operacionais espelhados a partir de Contratos de Servico da Omie quando disponiveis; fallback automatico para Ordens de Servico e, por ultimo, /geral/projetos."
           : undefined,
       ...result,
     });
@@ -139,7 +139,7 @@ router.post("/sync/all", async (req, res) => {
       projects,
       note:
         projects.totalFromOmie > 0
-          ? "Clientes foram importados. Projetos operacionais foram espelhados a partir dos Contratos de Servico da Omie quando esse modulo estiver populado."
+          ? "Clientes foram importados. Projetos operacionais foram espelhados a partir de Contratos de Servico da Omie quando esse modulo estiver populado, com fallback para Ordens de Servico e /geral/projetos."
           : undefined,
     });
   } catch (error) {
