@@ -900,6 +900,47 @@ function isSessionMenuRequest(text: string | null) {
   ].includes(normalized);
 }
 
+function isPositiveIntegerText(text: string | null) {
+  return /^[1-9][0-9]*$/.test(normalizeComparableText(text));
+}
+
+function pickCandidateByNumber<TCandidate>(text: string | null, candidates: TCandidate[]) {
+  if (!isPositiveIntegerText(text)) {
+    return null;
+  }
+
+  const index = Number(normalizeComparableText(text)) - 1;
+  return candidates[index] || null;
+}
+
+function hasPendingClientChoice(session: IntakeSessionRow) {
+  const context = getContextData(session.context_data);
+  return (
+    session.current_step === "awaiting_client_cnpj" &&
+    normalizeStringArray(context.pending_client_candidate_ids).length > 0
+  );
+}
+
+function hasPendingProjectChoice(session: IntakeSessionRow) {
+  const context = getContextData(session.context_data);
+  return (
+    session.current_step === "awaiting_project" &&
+    normalizeStringArray(context.pending_project_candidate_ids).length > 0
+  );
+}
+
+function isPendingFieldReply(text: string | null) {
+  return isPositiveIntegerText(text) || normalizeDigits(text).length >= 14;
+}
+
+function findPendingFieldReplySession(sessions: IntakeSessionRow[], text: string | null) {
+  if (!isPendingFieldReply(text)) {
+    return null;
+  }
+
+  return sessions.find((session) => hasPendingClientChoice(session) || hasPendingProjectChoice(session)) || null;
+}
+
 async function createOpenSession(userId: string, phone: string) {
   const { data, error } = await supabase
     .from("intake_sessions")
@@ -1310,6 +1351,26 @@ async function searchClientCandidates(searchText: string, candidateIds?: string[
   });
 }
 
+async function getClientCandidatesByIds(ids: string[]) {
+  if (!ids.length) {
+    return [] as OmieClientRow[];
+  }
+
+  const { data, error } = await supabase
+    .from("omie_clients_mirror")
+    .select(
+      "id, razao_social, nome_fantasia, cnpj, email, telefone, contato_nome, contato_email, contato_telefone"
+    )
+    .in("id", ids);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const byId = new Map(((data || []) as OmieClientRow[]).map((client) => [client.id, client]));
+  return ids.map((id) => byId.get(id)).filter(Boolean) as OmieClientRow[];
+}
+
 async function getClientById(clientId: string) {
   const { data, error } = await supabase
     .from("omie_clients_mirror")
@@ -1465,6 +1526,26 @@ async function searchProjectCandidates(clientId: string, searchText: string, can
 
     return getProjectDisplayName(left).localeCompare(getProjectDisplayName(right), "pt-BR");
   });
+}
+
+async function getProjectCandidatesByIds(ids: string[]) {
+  if (!ids.length) {
+    return [] as OmieProjectRow[];
+  }
+
+  const { data, error } = await supabase
+    .from("omie_projects_mirror")
+    .select(
+      "id, client_id, nome, empreendimento_nome, empreendimento_endereco, empreendimento_cidade, empreendimento_estado, latitude, longitude, numero_contrato, status"
+    )
+    .in("id", ids);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const byId = new Map(((data || []) as OmieProjectRow[]).map((project) => [project.id, project]));
+  return ids.map((id) => byId.get(id)).filter(Boolean) as OmieProjectRow[];
 }
 
 function resolveClientMatch(searchText: string, candidates: OmieClientRow[]) {
@@ -2077,8 +2158,13 @@ router.post("/webhook-ingest", async (req, res) => {
     if (!session) {
       const activeSessions = await findOpenSessionsForUser(user.id);
       const recentChoiceSession = await findRecentSessionChoiceSession(user.id);
+      const pendingFieldReplySession = findPendingFieldReplySession(activeSessions, messageText);
 
-      if (recentChoiceSession) {
+      if (pendingFieldReplySession && !requestedReportAction) {
+        session = pendingFieldReplySession;
+      }
+
+      if (!session && recentChoiceSession) {
         const choiceContext = getContextData(recentChoiceSession.context_data);
         const optionIds = normalizeStringArray(choiceContext.whatsapp_session_options);
         const normalizedChoice = normalizeComparableText(messageText);
@@ -2182,7 +2268,7 @@ router.post("/webhook-ingest", async (req, res) => {
         }
       }
 
-      if (requestedReportAction === "new_report" && activeSessions.length > 0) {
+      if (!session && requestedReportAction === "new_report" && activeSessions.length > 0) {
         await clearSessionChoiceOptions(user.id);
         const newSession = await createOpenSession(user.id, senderPhone);
         session = await selectReportActionForSession(newSession, "new_report");
@@ -2217,11 +2303,12 @@ router.post("/webhook-ingest", async (req, res) => {
       }
 
       const shouldAskSessionChoice =
-        activeSessions.length > 1 ||
-        (activeSessions.length === 1 &&
-          (isSessionMenuRequest(messageText) ||
-            requestedReportAction === "edit_report" ||
-            activeSessions[0].status === "ready_for_draft"));
+        !session &&
+        (activeSessions.length > 1 ||
+          (activeSessions.length === 1 &&
+            (isSessionMenuRequest(messageText) ||
+              requestedReportAction === "edit_report" ||
+              activeSessions[0].status === "ready_for_draft")));
 
       if (shouldAskSessionChoice) {
         const routerSession = activeSessions[0];
@@ -2258,14 +2345,16 @@ router.post("/webhook-ingest", async (req, res) => {
         return;
       }
 
-      const existingSession = activeSessions[0] || (await findOpenSessionForUser(user.id));
-      const shouldStartNewSession =
-        !existingSession ||
-        (Boolean(requestedReportAction) &&
-          existingSession.current_step !== "awaiting_report_action");
-      session = shouldStartNewSession
-        ? await createOpenSession(user.id, senderPhone)
-        : existingSession;
+      if (!session) {
+        const existingSession = activeSessions[0] || (await findOpenSessionForUser(user.id));
+        const shouldStartNewSession =
+          !existingSession ||
+          (Boolean(requestedReportAction) &&
+            existingSession.current_step !== "awaiting_report_action");
+        session = shouldStartNewSession
+          ? await createOpenSession(user.id, senderPhone)
+          : existingSession;
+      }
     }
 
     if (!messageId) {
@@ -2338,13 +2427,24 @@ router.post("/webhook-ingest", async (req, res) => {
       if (session.current_step === "awaiting_client_cnpj") {
         const candidateIds = normalizeStringArray(contextData.pending_client_candidate_ids);
         const cnpjDigits = normalizeDigits(messageText);
+        const pendingCandidates =
+          candidateIds.length > 0 ? await getClientCandidatesByIds(candidateIds) : [];
+        const numberedClient = pickCandidateByNumber(messageText, pendingCandidates);
 
-        if (messageType !== "text" || !messageText || cnpjDigits.length < 14) {
+        if (numberedClient) {
+          session = await selectClientForSession(session, numberedClient);
           outboundText = addressMessage(
             technicianFirstName,
-            "Encontrei mais de um cliente com esse nome. Me envie o CNPJ completo do cliente para eu localizar o cadastro certo."
+            `Perfeito. Cliente identificado: ${getClientDisplayName(numberedClient)}. Qual e o projeto ou contrato deste relatorio?`
           );
-          replyReason = "client_cnpj_required";
+          replyReason = "client_selected";
+          await logOutboundMessage(session.id, outboundText, "project_request");
+        } else if (messageType !== "text" || !messageText || cnpjDigits.length < 14) {
+          outboundText = addressMessage(
+            technicianFirstName,
+            "Escolha pelo numero da lista ou envie o CNPJ completo do cliente para eu localizar o cadastro certo."
+          );
+          replyReason = "client_choice_required";
           await logOutboundMessage(session.id, outboundText, "client_cnpj_request");
         } else {
           const candidates = await searchClientCandidates(
@@ -2363,10 +2463,14 @@ router.post("/webhook-ingest", async (req, res) => {
             await logOutboundMessage(session.id, outboundText, "project_request");
           } else {
             const pendingSearchText = normalizeText(contextData.pending_client_search_text) || messageText;
-            session = await setSessionAwaitingClientCnpj(session, pendingSearchText, candidates);
+            session = await setSessionAwaitingClientCnpj(
+              session,
+              pendingSearchText,
+              candidates.length > 0 ? candidates : pendingCandidates
+            );
             outboundText = addressMessage(
               technicianFirstName,
-              "Nao consegui localizar o cliente por esse CNPJ. Me envie o CNPJ completo do cliente para eu confirmar o cadastro correto."
+              "Nao consegui localizar o cliente por esse CNPJ. Responda com o numero da lista ou envie o CNPJ completo para confirmar o cadastro correto."
             );
             replyReason = "client_cnpj_not_found";
             await logOutboundMessage(session.id, outboundText, "client_cnpj_request");
@@ -2407,7 +2511,7 @@ router.post("/webhook-ingest", async (req, res) => {
           session = await setSessionAwaitingClientCnpj(session, messageText, clientCandidates);
           outboundText = addressMessage(
             technicianFirstName,
-            "Encontrei mais de um cliente com esse nome. Me envie o CNPJ completo do cliente para eu localizar o cadastro certo."
+            "Encontrei mais de um cliente com esse nome. Escolha pelo numero da lista ou envie o CNPJ completo."
           );
           replyReason = "client_cnpj_required";
           await logOutboundMessage(session.id, outboundText, "client_cnpj_request");
@@ -2451,12 +2555,19 @@ router.post("/webhook-ingest", async (req, res) => {
     if (!session.project_id) {
       if (messageType === "text" && messageText) {
         const projectCandidateIds = normalizeStringArray(contextData.pending_project_candidate_ids);
-        const projectCandidates = await searchProjectCandidates(
-          session.client_id,
-          messageText,
-          projectCandidateIds.length > 0 ? projectCandidateIds : undefined
-        );
-        const matchedProject = resolveProjectMatch(messageText, projectCandidates);
+        const pendingProjectCandidates =
+          projectCandidateIds.length > 0
+            ? await getProjectCandidatesByIds(projectCandidateIds)
+            : [];
+        const numberedProject = pickCandidateByNumber(messageText, pendingProjectCandidates);
+        const projectCandidates = numberedProject
+          ? pendingProjectCandidates
+          : await searchProjectCandidates(
+              session.client_id,
+              messageText,
+              projectCandidateIds.length > 0 ? projectCandidateIds : undefined
+            );
+        const matchedProject = numberedProject || resolveProjectMatch(messageText, projectCandidates);
 
         if (matchedProject) {
           session = await selectProjectForSession(session, matchedProject);
