@@ -7,13 +7,15 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "sync:omie": "tsx src/scripts/sync-omie.ts"
   },
   "dependencies": {
     "@elementus/shared": "workspace:*",
     "@supabase/supabase-js": "^2.49.0",
     "cors": "^2.8.5",
     "docxtemplater": "^3.50.0",
+    "docxtemplater-image-module-free": "1.1.1",
     "express": "^5.0.0",
     "multer": "^1.4.5-lts.1",
     "pizzip": "^3.1.7",
