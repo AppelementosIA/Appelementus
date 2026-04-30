@@ -372,14 +372,19 @@ async function postN8nWebhook(
   }
 }
 
-function normalizeProductionWebhookUrl(value?: string | null) {
+function normalizeFinalReportWebhookUrl(value?: string | null) {
   const url = getString(value);
 
   if (!url) {
     return null;
   }
 
-  return url.replace("/webhook-test/", "/webhook/");
+  return url
+    .replace("/webhook-test/", "/webhook/")
+    .replace(
+      /elementus-final-report-(rag-native-completo|rag-native|rag|sem-embedding)/g,
+      "elementus-final-report-simple-native"
+    );
 }
 
 function addUniqueUrl(urls: string[], value?: string | null) {
@@ -392,9 +397,19 @@ function addUniqueUrl(urls: string[], value?: string | null) {
 
 function buildFinalReportWebhookUrls(configuredUrl?: string | null) {
   const urls: string[] = [];
+  const configured = getString(configuredUrl);
+  const normalized = normalizeFinalReportWebhookUrl(configured);
 
-  addUniqueUrl(urls, normalizeProductionWebhookUrl(configuredUrl));
-  addUniqueUrl(urls, configuredUrl);
+  addUniqueUrl(urls, normalized);
+
+  if (
+    configured &&
+    configured === normalized &&
+    !configured.includes("/webhook-test/")
+  ) {
+    addUniqueUrl(urls, configured);
+  }
+
   addUniqueUrl(urls, FINAL_REPORT_DOCX_WEBHOOK_FALLBACK_URL);
 
   return urls;
