@@ -2457,6 +2457,42 @@ router.post("/webhook-ingest", async (req, res) => {
     const contextData = getContextData(session.context_data);
     const activeReportAction = contextData.report_action || null;
 
+    if (!session.client_id && messageType === "text" && isPositiveIntegerText(messageText)) {
+      const pendingClientIds = normalizeStringArray(contextData.pending_client_candidate_ids);
+
+      if (pendingClientIds.length > 0) {
+        const pendingCandidates = await getClientCandidatesByIds(pendingClientIds);
+        const numberedClient = pickCandidateByNumber(messageText, pendingCandidates);
+
+        if (numberedClient) {
+          session = await selectClientForSession(session, numberedClient);
+          outboundText = addressMessage(
+            technicianFirstName,
+            `Perfeito. Cliente identificado: ${getClientDisplayName(numberedClient)}. Qual e o projeto ou contrato deste relatorio?`
+          );
+          replyReason = "client_selected";
+          await logOutboundMessage(session.id, outboundText, "project_request");
+
+          res.json(
+            buildWebhookIngestResponse({
+              accepted: true,
+              known_user: true,
+              senderPhone,
+              user,
+              session,
+              messageId,
+              messageIsNew,
+              outboundText,
+              sendReply: true,
+              askPhotoDescriptionNow: false,
+              reason: replyReason,
+            })
+          );
+          return;
+        }
+      }
+    }
+
     if (!activeReportAction && !session.client_id && !session.project_id) {
       if (requestedReportAction) {
         session = await selectReportActionForSession(session, requestedReportAction);

@@ -1,7 +1,9 @@
 import type { ReportGeneratedData } from "@elementus/shared";
 import { config } from "./config.js";
 
-const FINAL_REPORT_DOCX_WEBHOOK_FALLBACK_URL =
+const FINAL_REPORT_WEBHOOK_FALLBACK_URL =
+  "https://elementus-n8n.qseovz.easypanel.host/webhook/elementus-final-report-rag-native-completo";
+const FINAL_REPORT_DOCX_WEBHOOK_SECONDARY_URL =
   "https://elementus-n8n.qseovz.easypanel.host/webhook/elementus-final-report-simple-native";
 
 type JsonRecord = Record<string, unknown>;
@@ -379,12 +381,7 @@ function normalizeFinalReportWebhookUrl(value?: string | null) {
     return null;
   }
 
-  return url
-    .replace("/webhook-test/", "/webhook/")
-    .replace(
-      /elementus-final-report-(rag-native-completo|rag-native|rag|sem-embedding)/g,
-      "elementus-final-report-simple-native"
-    );
+  return url.replace("/webhook-test/", "/webhook/");
 }
 
 function addUniqueUrl(urls: string[], value?: string | null) {
@@ -400,6 +397,7 @@ function buildFinalReportWebhookUrls(configuredUrl?: string | null) {
   const configured = getString(configuredUrl);
   const normalized = normalizeFinalReportWebhookUrl(configured);
 
+  addUniqueUrl(urls, FINAL_REPORT_WEBHOOK_FALLBACK_URL);
   addUniqueUrl(urls, normalized);
 
   if (
@@ -410,7 +408,7 @@ function buildFinalReportWebhookUrls(configuredUrl?: string | null) {
     addUniqueUrl(urls, configured);
   }
 
-  addUniqueUrl(urls, FINAL_REPORT_DOCX_WEBHOOK_FALLBACK_URL);
+  addUniqueUrl(urls, FINAL_REPORT_DOCX_WEBHOOK_SECONDARY_URL);
 
   return urls;
 }
