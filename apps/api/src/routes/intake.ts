@@ -820,7 +820,75 @@ async function findActivePlatformUserByPhone(phone: string) {
     return suffixMatches[0].user;
   }
 
-  return null;
+  return findActivePlatformUserByPreviousSessionPhone(phone);
+}
+
+async function findActivePlatformUserByPreviousSessionPhone(phone: string) {
+  const { data, error } = await supabase
+    .from("intake_sessions")
+    .select("user_id, phone, updated_at")
+    .not("phone", "is", null)
+    .order("updated_at", { ascending: false })
+    .limit(200);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const rankedByUser = new Map<string, { userId: string; rank: number; updatedAt: string }>();
+
+  for (const session of (data || []) as Array<{
+    user_id?: string | null;
+    phone?: string | null;
+    updated_at?: string | null;
+  }>) {
+    if (!session.user_id) {
+      continue;
+    }
+
+    const rank = rankPhoneMatch(phone, session.phone || "");
+    if (!isPhoneMatchRank(rank)) {
+      continue;
+    }
+
+    const updatedAt = session.updated_at || "";
+    const existing = rankedByUser.get(session.user_id);
+    const isBetterRank = !existing || rank < existing.rank;
+    const isNewerSameRank = existing?.rank === rank && updatedAt > existing.updatedAt;
+
+    if (isBetterRank || isNewerSameRank) {
+      rankedByUser.set(session.user_id, { userId: session.user_id, rank, updatedAt });
+    }
+  }
+
+  const matches = Array.from(rankedByUser.values()).sort((left, right) => {
+    if (left.rank !== right.rank) {
+      return left.rank - right.rank;
+    }
+
+    return right.updatedAt.localeCompare(left.updatedAt);
+  });
+
+  const exactMatch = matches.find((match) => match.rank <= 1);
+  const suffixMatches = matches.filter((match) => match.rank === 2);
+  const selectedMatch = exactMatch || (suffixMatches.length === 1 ? suffixMatches[0] : null);
+
+  if (!selectedMatch) {
+    return null;
+  }
+
+  const { data: user, error: userError } = await supabase
+    .from("platform_users")
+    .select("id, full_name, name, email, phone_whatsapp, phone, active")
+    .eq("id", selectedMatch.userId)
+    .eq("active", true)
+    .maybeSingle();
+
+  if (userError) {
+    throw new Error(userError.message);
+  }
+
+  return (user as PlatformUserRow | null) || null;
 }
 
 async function findOpenSessionForUser(userId: string) {
