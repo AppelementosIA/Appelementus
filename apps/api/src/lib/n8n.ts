@@ -4,7 +4,7 @@ import { config } from "./config.js";
 const FINAL_REPORT_WEBHOOK_FALLBACK_URL =
   "https://elementus-n8n.qseovz.easypanel.host/webhook/elementus-final-report-rag-native-completo";
 const FINAL_REPORT_DOCX_WEBHOOK_SECONDARY_URL =
-  "https://elementus-n8n.qseovz.easypanel.host/webhook/elementus-final-report-simple-native";
+  "https://elementus-n8n.qseovz.easypanel.host/webhook/elementus-final-report-rag-native-completo";
 
 type JsonRecord = Record<string, unknown>;
 

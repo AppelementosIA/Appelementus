@@ -983,18 +983,12 @@ function pickCandidateByNumber<TCandidate>(text: string | null, candidates: TCan
 
 function hasPendingClientChoice(session: IntakeSessionRow) {
   const context = getContextData(session.context_data);
-  return (
-    session.current_step === "awaiting_client_cnpj" &&
-    normalizeStringArray(context.pending_client_candidate_ids).length > 0
-  );
+  return normalizeStringArray(context.pending_client_candidate_ids).length > 0;
 }
 
 function hasPendingProjectChoice(session: IntakeSessionRow) {
   const context = getContextData(session.context_data);
-  return (
-    session.current_step === "awaiting_project" &&
-    normalizeStringArray(context.pending_project_candidate_ids).length > 0
-  );
+  return normalizeStringArray(context.pending_project_candidate_ids).length > 0;
 }
 
 function isPendingFieldReply(text: string | null) {
@@ -1695,6 +1689,8 @@ async function selectClientForSession(session: IntakeSessionRow, client: OmieCli
       "pending_client_search_text",
       "pending_project_candidate_ids",
       "pending_project_search_text",
+      "whatsapp_session_options",
+      "whatsapp_session_options_at",
     ]),
   });
 }
@@ -1710,6 +1706,8 @@ async function selectProjectForSession(session: IntakeSessionRow, project: OmieP
     context_data: omitContextKeys(currentContext, [
       "pending_project_candidate_ids",
       "pending_project_search_text",
+      "whatsapp_session_options",
+      "whatsapp_session_options_at",
     ]),
     last_question: null,
   });
@@ -1731,6 +1729,8 @@ async function setSessionAwaitingReportAction(session: IntakeSessionRow) {
       "pending_client_search_text",
       "pending_project_candidate_ids",
       "pending_project_search_text",
+      "whatsapp_session_options",
+      "whatsapp_session_options_at",
     ]),
   });
 }
@@ -1754,6 +1754,8 @@ async function selectReportActionForSession(
         "pending_client_search_text",
         "pending_project_candidate_ids",
         "pending_project_search_text",
+        "whatsapp_session_options",
+        "whatsapp_session_options_at",
       ]),
       report_action: reportAction,
     },
@@ -1772,6 +1774,8 @@ async function setSessionAwaitingClient(session: IntakeSessionRow) {
       "pending_client_search_text",
       "pending_project_candidate_ids",
       "pending_project_search_text",
+      "whatsapp_session_options",
+      "whatsapp_session_options_at",
     ]),
   });
 }
@@ -1788,7 +1792,12 @@ async function setSessionAwaitingClientCnpj(
     current_step: "awaiting_client_cnpj",
     missing_fields: buildMissingFields(null, null),
     context_data: {
-      ...omitContextKeys(currentContext, ["pending_project_candidate_ids", "pending_project_search_text"]),
+      ...omitContextKeys(currentContext, [
+        "pending_project_candidate_ids",
+        "pending_project_search_text",
+        "whatsapp_session_options",
+        "whatsapp_session_options_at",
+      ]),
       pending_client_candidate_ids: candidates.map((candidate) => candidate.id),
       pending_client_search_text: searchText,
     },
@@ -1805,6 +1814,8 @@ async function setSessionAwaitingProject(session: IntakeSessionRow) {
     context_data: omitContextKeys(currentContext, [
       "pending_project_candidate_ids",
       "pending_project_search_text",
+      "whatsapp_session_options",
+      "whatsapp_session_options_at",
     ]),
   });
 }
@@ -1821,7 +1832,12 @@ async function setSessionAwaitingProjectClarification(
     current_step: "awaiting_project",
     missing_fields: buildMissingFields(session.client_id, null),
     context_data: {
-      ...omitContextKeys(currentContext, ["pending_client_candidate_ids", "pending_client_search_text"]),
+      ...omitContextKeys(currentContext, [
+        "pending_client_candidate_ids",
+        "pending_client_search_text",
+        "whatsapp_session_options",
+        "whatsapp_session_options_at",
+      ]),
       pending_project_candidate_ids: candidates.map((candidate) => candidate.id),
       pending_project_search_text: searchText,
     },
@@ -2280,6 +2296,87 @@ router.post("/webhook-ingest", async (req, res) => {
             const selectedSession = await getSessionById(selectedSessionId);
 
             if (selectedSession) {
+              const selectedSessionContext = getContextData(selectedSession.context_data);
+
+              if (hasPendingClientChoice(selectedSession)) {
+                const pendingCandidates = await getClientCandidatesByIds(
+                  normalizeStringArray(selectedSessionContext.pending_client_candidate_ids)
+                );
+                const numberedClient = pickCandidateByNumber(messageText, pendingCandidates);
+
+                if (numberedClient) {
+                  await clearSessionChoiceOptions(user.id);
+
+                  const insertedMessage = await insertInboundMessage(selectedSession.id, payload);
+                  messageId = insertedMessage.id;
+                  messageIsNew = true;
+                  session = await selectClientForSession(selectedSession, numberedClient);
+                  outboundText = addressMessage(
+                    technicianFirstName,
+                    `Perfeito. Cliente identificado: ${getClientDisplayName(numberedClient)}. Qual e o projeto ou contrato deste relatorio?`
+                  );
+                  replyReason = "client_selected";
+                  await logOutboundMessage(session.id, outboundText, "project_request");
+
+                  res.json(
+                    buildWebhookIngestResponse({
+                      accepted: true,
+                      known_user: true,
+                      senderPhone,
+                      user,
+                      session,
+                      messageId,
+                      messageIsNew,
+                      outboundText,
+                      sendReply: true,
+                      askPhotoDescriptionNow: false,
+                      reason: replyReason,
+                    })
+                  );
+                  return;
+                }
+              }
+
+              if (hasPendingProjectChoice(selectedSession)) {
+                const pendingProjects = await getProjectCandidatesByIds(
+                  normalizeStringArray(selectedSessionContext.pending_project_candidate_ids)
+                );
+                const numberedProject = pickCandidateByNumber(messageText, pendingProjects);
+
+                if (numberedProject) {
+                  await clearSessionChoiceOptions(user.id);
+
+                  const insertedMessage = await insertInboundMessage(selectedSession.id, payload);
+                  messageId = insertedMessage.id;
+                  messageIsNew = true;
+                  session = await selectProjectForSession(selectedSession, numberedProject);
+                  outboundText = buildProjectConfirmedText(
+                    numberedProject,
+                    selectedSessionContext.report_action,
+                    technicianFirstName
+                  );
+                  replyReason = "project_selected";
+                  await logOutboundMessage(session.id, outboundText, "intake_start");
+
+                  res.json(
+                    buildWebhookIngestResponse({
+                      accepted: true,
+                      known_user: true,
+                      senderPhone,
+                      user,
+                      session,
+                      messageId,
+                      messageIsNew,
+                      outboundText,
+                      sendReply: true,
+                      askPhotoDescriptionNow: false,
+                      reason: replyReason,
+                    })
+                  );
+                  return;
+                }
+              }
+
               await clearSessionChoiceOptions(user.id);
 
               const insertedMessage = await insertInboundMessage(selectedSession.id, payload);
